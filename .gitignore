@@ -1,4 +1,5 @@
 .vscode
+config.json
 
 # Output files
 *.out
