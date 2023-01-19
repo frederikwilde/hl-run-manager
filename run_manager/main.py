@@ -27,10 +27,10 @@ MAIN_PATH = Path(__file__)
 
 def ini_mps(n, chi, pert, local_dim, occupation):
     m = mps_zero_state(n, chi, pert, d=local_dim)
-    if occupation == 'neel':
+    if occupation == 'half-filled':
         for i in range(n//2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-    elif occupation == 'half-filled':
+    elif occupation == 'neel':
         for i in range(0, n, 2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
     else:
