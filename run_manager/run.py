@@ -7,7 +7,6 @@ from pathlib import Path
 from .series import Series
 from . import RESULT_DIR
 from . import ORMBase
-from .main import execute
 
 
 class Run(ORMBase):
@@ -76,10 +75,6 @@ class Run(ORMBase):
     def pre_execute_check(self):
         if (not self.id) or (not self.series_name):
             raise ValueError('Run is not properly stored in database. Must have a valid id and series_name attribute.')
-
-    def launch(self):
-        '''Execute the main script on this run instance on the local machine (i.e. not via Slurm).'''
-        execute(int(self.series_name[:3]), self.id)
 
     # Methods for directories and files associated with the run.
     def output_directory(self):

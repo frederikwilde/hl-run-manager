@@ -1,5 +1,6 @@
 '''Main script to be run for one optimization process.'''
 
+import warnings
 import logging
 import jax.numpy as jnp
 import numpy as np
@@ -9,16 +10,17 @@ from pathlib import Path
 from tqdm import tqdm
 from time import time
 import h5py
+from typing import Union
 from differentiable_tebd.utils.mps import mps_zero_state, norm_squared
 from differentiable_tebd.utils.mps_bosons import probability
 from differentiable_tebd.physical_models.bose_hubbard import mps_evolution_order2
 from differentiable_tebd.sampling.bosons import one_sample_from_mps
-from adam import Adam
 
-from . import Series
-from . import Run
+
+from .adam import Adam
+from .series import Series
+from .run import Run
 from . import DATASET_DIR
-
 
 MAIN_PATH = Path(__file__)
 
@@ -60,9 +62,20 @@ def load_data(time_stamp_idx, run):
     return steps, initial_params, data_indeces
 
 
-def execute(series_number, run_index):
-    series = Series(series_number)
-    run: Run = series.session.query(Run).where(Run.id == run_index).first()
+def execute(
+        series_number: Union[int, None],
+        run_index: Union[int, None],
+        run: Union[Run, None] = None
+    ):
+    '''
+    Execute the optimization process and store the results.
+    As input either a `Run` object can be provided or a series number and the corresponding run index.
+    '''
+    if not run:
+        series = Series(series_number)
+        run = series.session.query(Run).where(Run.id == run_index).first()
+    elif (series_number is not None) or (run_index is not None):
+        warnings.warn('A run was explicitly provided and the arguments series_number and run_index will be ignored.')
     run.pre_execute_check()
 
     n = run.num_sites
