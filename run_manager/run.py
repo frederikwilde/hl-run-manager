@@ -88,18 +88,19 @@ class Run(ORMBase):
         return path
 
     def find_job_id(self):
+        warnings.warn('Not implemented yet.')
         for f in os.scandir(self.output_directory()):
             if f.name[-4:] == '.out':
-                warnings.warn('Not implemented yet.')
+                pass
+
+    def read_out_file(self):
+        warnings.warn('Not implemented yet.')
 
     def read_log_file(self):
         path = Path.joinpath(self.output_directory(), Path(f'{self.id}.log'))
         with open(path, 'r') as f:
             out = f.read().split('\n')
         return out
-
-    def read_out_file(self):
-        warnings.warn('Not implemented yet.')
 
     def result_file_path(self):
         return Path.joinpath(self.output_directory(), Path(f'{self.id}.hdf5'))

@@ -14,7 +14,7 @@ from typing import Union
 from differentiable_tebd.utils.mps import mps_zero_state, norm_squared
 from differentiable_tebd.utils.mps_bosons import probability
 from differentiable_tebd.physical_models.bose_hubbard import mps_evolution_order2
-from differentiable_tebd.sampling.bosons import one_sample_from_mps
+from differentiable_tebd.sampling.bosons import sample_from_mps
 
 
 from .adam import Adam
