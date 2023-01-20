@@ -5,12 +5,14 @@ from time import time
 from datetime import datetime
 import h5py
 from types import SimpleNamespace
+from pathlib import Path
 from differentiable_tebd.physical_models.bose_hubbard import mps_evolution_order2
 from differentiable_tebd.sampling.bosons import sample_from_mps
 
-from .versioning import get_differentiable_tebd_commit_hash
 from . import COMMIT_HASH
+from . import DATASET_DIR
 from .main import ini_mps
+from .versioning import get_differentiable_tebd_commit_hash
 
 
 steps = int(sys.argv[1])
@@ -49,7 +51,8 @@ def compute_samples(steps, keys):
 
     now = datetime.utcnow
     filename = f'{now:%y-%m-%d}-bowl-neel-n{cf.num_sites}-steps{steps}.hdf5'
-    with h5py.File(filename, 'x') as f:
+    path = Path.joinpath(DATASET_DIR, Path(filename))
+    with h5py.File(path, 'x') as f:
         f.create_dataset('samples', data=samples)
         f.create_dataset('mps', data=m)
         f.create_dataset('errors_squared', data=errors_squared)
