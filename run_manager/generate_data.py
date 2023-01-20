@@ -15,7 +15,7 @@ from .main import ini_mps
 from .versioning import get_differentiable_tebd_commit_hash
 
 
-def compute_samples(steps, num_keys):
+def compute_samples(steps, num_keys, ini_state_occupation):
     key = jax.random.PRNGKey(steps)
     keys = jax.random.split(key, num_keys)
     cf = SimpleNamespace()  # config object
@@ -33,7 +33,7 @@ def compute_samples(steps, num_keys):
     cf.mu = .5 * (1. - jnp.sin(jnp.linspace(0, jnp.pi, cf.num_sites)))
     params = jnp.concatenate([jnp.array([cf.J, cf.U]), cf.mu])
 
-    m = ini_mps(cf.num_sites, cf.chi, None, 4, 'neel')
+    m = ini_mps(cf.num_sites, cf.chi, None, 4, ini_state_occupation)
 
     t1 = time()
     m, errors_squared = mps_evolution_order2(params, cf.deltat, steps, m)
@@ -47,7 +47,7 @@ def compute_samples(steps, num_keys):
     print(f'Sampling finished in {cf.sample_time:.3f}s')
 
     now = datetime.utcnow()
-    filename = f'{now:%y-%m-%d}-bowl-neel-n{cf.num_sites}-steps{steps}.hdf5'
+    filename = f'{now:%y-%m-%d}-bowl-{ini_state_occupation}-n{cf.num_sites}-steps{steps}.hdf5'
     path = Path.joinpath(Path(DATASET_DIR), Path(filename))
     with h5py.File(path, 'x') as f:
         f.create_dataset('samples', data=samples)
