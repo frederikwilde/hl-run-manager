@@ -24,7 +24,7 @@ class Run(ORMBase):
         FINISHED: log file contains confirmation that the HDF5 file as been created successfully
 
     Args:
-        initial_point_index (int)
+        initial_point_seed (int)
         num_sites (int)
         step_size (float)
         deltat (float)
@@ -42,7 +42,7 @@ class Run(ORMBase):
     '''
     __tablename__ = 'Runs'
     id = Column(Integer, primary_key=True)
-    initial_point_index = Column(Integer)
+    initial_point_seed = Column(Integer)
     num_sites = Column(Integer)
     step_size = Column(Float)
     deltat = Column(Float)
@@ -61,7 +61,7 @@ class Run(ORMBase):
 
     def save_to_db(self, series: Series):
         if not self.id:
-            self.series_name = f'{series.number}_{series.name}_{series.hash}'
+            self.series_name = f'{series.number:03}_{series.name}_{series.hash}'
             series.session.add(self)
             series.session.commit()
         else:
@@ -121,5 +121,8 @@ class Run(ORMBase):
 
     def copy(self):
         d = dict(self.__dict__)
-        d.pop("_sa_instance_state")
+        d.pop('_sa_instance_state')
+        d.pop('time_created')
+        d.pop('series_name')
+        d.pop('id')
         return self.__class__(**d)

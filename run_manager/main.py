@@ -25,8 +25,8 @@ from . import DATASET_DIR
 MAIN_PATH = Path(__file__)
 
 
-def ini_mps(n, chi, pert, local_dim, occupation):
-    m = mps_zero_state(n, chi, pert, d=local_dim)
+def ini_mps(n, chi, pert, local_dim, occupation, rng=None):
+    m = mps_zero_state(n, chi, pert, d=local_dim, rng=rng)
     if occupation == 'half-filled':
         for i in range(n//2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
@@ -40,31 +40,51 @@ def ini_mps(n, chi, pert, local_dim, occupation):
 
 def negative_log_likelihood(sample, mps):
     return - jnp.log(probability(mps, sample))
+
+
 # vectorize over bitstrings
 batched_nll = jax.jit(jax.vmap(negative_log_likelihood, in_axes=(0, None)))
+
+
 def loss(params, mps, deltat, steps, samples_list, total_num_samples):
     nll = 0.
     for i in jnp.arange(len(steps), dtype=int):
         mps, _ = mps_evolution_order2(params, deltat, steps[i], mps)
         nll += jnp.sum(batched_nll(samples_list[i], mps))
-    return nll / total_num_samples
+    
+    # mu = params[2:]
+    # regularization = jnp.sum((mu[:-1] - mu[1:]) ** 2)
+    return nll / total_num_samples #+ regularization
 
 
 def load_data(time_stamp_idx, run):
     dataset_path = Path.joinpath(Path(DATASET_DIR), Path(run.data_set))
-    ini_points = f'initial_points_{run.num_sites}.hdf5'
-    initial_point_path = Path.joinpath(Path(DATASET_DIR), Path(ini_points))
-    samples_list = []
-    for s in cumulated_steps[:num_timestamps]:
-        with h5py.File(f'samples{s}.hdf5', 'r') as f:
-            samples_list.append(f['samples'][()])
-    data_indeces = np.arange(len(samples_list[0]))
-    return steps, initial_params, data_indeces
+
+    samples_list, times = [], []
+    with h5py.File(dataset_path, 'r') as f:
+        for i in time_stamp_idx:
+            samples_list.append(f[f'samples/t{i}'][:run.num_samples])
+            times.append(f.attrs['times'][i])
+        true_params = jnp.concatenate((jnp.array([f.attrs['J'], f.attrs['U']]), f.attrs['mu']))
+
+    steps = []
+    prev_t = 0.
+    for t in times:
+        steps.append(int(np.round((t - prev_t) / run.deltat)))
+        prev_t = t
+
+    data_indeces = np.arange(run.num_samples)
+    return steps, data_indeces, samples_list, true_params
+
+
+def initial_parameters(run: Run):
+    key = jax.random.PRNGKey(run.initial_point_seed)
+    return jax.random.uniform(key, (run.num_sites + 2,))
 
 
 def execute(
-        series_number: Union[int, None],
-        run_index: Union[int, None],
+        series_number: Union[int, None] = None,
+        run_index: Union[int, None] = None,
         run: Union[Run, None] = None
     ):
     '''
@@ -84,38 +104,51 @@ def execute(
     d = run.local_dim
     time_stamp_idx = [int(i) for i in run.time_stamps.split(',')]
 
-    steps, params, data_indeces = load_data(time_stamp_idx, run)
+    steps, data_indeces, samples_list, true_params = load_data(time_stamp_idx, run)
+    params = .1 * initial_parameters(run)
 
     opt = Adam(params)
     opt.step_size = run.step_size
     loss_history, param_history, grad_history = [], [], []
+    data_shuffle_rng_seed = run.id
+    rng = np.random.default_rng(data_shuffle_rng_seed)
+
+    filename = Path.joinpath(run.output_directory(), Path(f'{run.id}.hdf5'))
+    
     for e in range(run.max_epochs):
         rng.shuffle(data_indeces)
         for batch_indeces in data_indeces.reshape(len(data_indeces)//run.batch_size, run.batch_size):
+            t1 = time()
             v, g = jax.value_and_grad(loss)(
                 opt.parameters,
-                ini_mps(n, chi, 1e-6, d),
+                ini_mps(n, chi, run.mps_perturbation, d, 'neel', rng=rng),
                 deltat,
-                steps[:num_timestamps],
+                steps,
                 [s[batch_indeces] for s in samples_list],
-                num_timestamps * batch_size
+                len(samples_list) * run.batch_size
             )
             loss_history.append(v)
             param_history.append(opt.parameters)
             grad_history.append(g)
             opt.step(g)
-            print(f'parameters {opt.parameters}')
+
+            diffs = opt.parameters - true_params
+            J_error = np.abs(diffs[0])
+            U_error = np.abs(diffs[1])
+            mu_avg_error = np.linalg.norm(diffs[2:]) / n
+            print((
+                f'Time: {time()-t1:.2f}s  '
+                f'Errors J: {J_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
+            ))
+
+        with h5py.File(filename, 'w') as f:
+            f.create_dataset('loss_history', data=loss_history)
+            f.create_dataset('param_history', data=param_history)
+            f.create_dataset('grad_history', data=grad_history)
+            f.attrs['data_shuffle_rng_seed'] = data_shuffle_rng_seed
+            f.attrs['steps'] = steps
+            f.attrs['true_params'] = true_params
         print(f'Epoch {e+1} done\n')
-
-
-    with h5py.File('half-history-ts2-stp05.hdf5', 'x') as f:
-        f.create_dataset('loss_history', data=loss_history)
-        f.create_dataset('param_history', data=param_history)
-        f.create_dataset('grad_history', data=grad_history)
-        f.attrs['chi'] = chi
-        f.attrs['d'] = d
-        f.attrs['num_timestamps'] = num_timestamps
-        f.attrs['batch_size'] = batch_size
 
 
 if __name__ == '__main__':

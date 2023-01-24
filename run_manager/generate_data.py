@@ -26,7 +26,6 @@ def compute_samples(steps, num_keys, ini_state_occupation):
     cf.num_sites = 50
     cf.chi = 30
     cf.deltat = .02
-    cf.steps = steps
 
     cf.J = .1
     cf.U = 1.
@@ -34,25 +33,33 @@ def compute_samples(steps, num_keys, ini_state_occupation):
     params = jnp.concatenate([jnp.array([cf.J, cf.U]), cf.mu])
 
     m = ini_mps(cf.num_sites, cf.chi, None, 4, ini_state_occupation)
-
-    t1 = time()
-    m, errors_squared = mps_evolution_order2(params, cf.deltat, steps, m)
-    t2 = time()
-
-    cf.evol_time = t2 - t1
-    print(f'Time evolution finished in {cf.evol_time:.3f}s')
-
-    samples = sample_from_mps(m, keys)
-    cf.sample_time = time() - t2
-    print(f'Sampling finished in {cf.sample_time:.3f}s')
+    cf.times = []
 
     now = datetime.utcnow()
-    filename = f'{now:%y-%m-%d}-bowl-{ini_state_occupation}-n{cf.num_sites}-steps{steps}.hdf5'
+    filename = f'{now:%y-%m-%d}-bowl-{ini_state_occupation}-n{cf.num_sites}.hdf5'
     path = Path.joinpath(Path(DATASET_DIR), Path(filename))
     with h5py.File(path, 'x') as f:
-        f.create_dataset('samples', data=samples)
-        f.create_dataset('mps', data=m)
-        f.create_dataset('errors_squared', data=errors_squared)
+        g_samples = f.create_group('samples')
+        g_mps = f.create_group('mps')
+        g_errs = f.create_group('errors_squared')
+
+        for i, s in enumerate(steps):
+            time_stamp = cf.deltat * s + cf.times[-1] if cf.times else cf.deltat * s
+            cf.times.append(time_stamp)
+
+            t1 = time()
+            m, errors_squared = mps_evolution_order2(params, cf.deltat, s, m)
+            t2 = time()
+            evol_time = t2 - t1
+            print(f'Time evolution finished in {evol_time:.3f}s')
+            samples = sample_from_mps(m, keys)
+            sample_time = time() - t2
+            print(f'Sampling finished in {sample_time:.3f}s')
+
+            g_samples.create_dataset(f't{i}', data=samples)
+            g_mps.create_dataset(f't{i}', data=m)
+            g_errs.create_dataset(f't{i}', data=errors_squared)
+        
         for k, v in cf.__dict__.items():
             f.attrs[k] = v
 

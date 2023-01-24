@@ -33,3 +33,4 @@ COMMIT_HASH = get_commit_hash()
 
 from .run import Run
 from .series import Series
+from .main import execute
