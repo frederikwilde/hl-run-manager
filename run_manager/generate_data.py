@@ -23,7 +23,7 @@ def compute_samples(steps, num_keys, ini_state_occupation):
     cf.run_manager_commit_hash = COMMIT_HASH
     cf.differentiable_tebd_hash = get_differentiable_tebd_commit_hash()
 
-    cf.num_sites = 50
+    cf.num_sites = 20
     cf.chi = 30
     cf.deltat = .02
 
