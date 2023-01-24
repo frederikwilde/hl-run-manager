@@ -16,7 +16,7 @@ from .versioning import get_differentiable_tebd_commit_hash
 
 
 def compute_samples(steps, num_keys, ini_state_occupation):
-    key = jax.random.PRNGKey(steps)
+    key = jax.random.PRNGKey(steps[0])
     keys = jax.random.split(key, num_keys)
     cf = SimpleNamespace()  # config object
 
