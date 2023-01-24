@@ -52,9 +52,9 @@ def loss(params, mps, deltat, steps, samples_list, total_num_samples):
         mps, _ = mps_evolution_order2(params, deltat, steps[i], mps)
         nll += jnp.sum(batched_nll(samples_list[i], mps))
     
-    # mu = params[2:]
-    # regularization = jnp.sum((mu[:-1] - mu[1:]) ** 2)
-    return nll / total_num_samples #+ regularization
+    mu = params[2:]
+    regularization = .1 * jnp.sum((mu[:-1] - mu[1:]) ** 2)
+    return nll / total_num_samples + regularization
 
 
 def load_data(time_stamp_idx, run):
@@ -105,7 +105,8 @@ def execute(
     time_stamp_idx = [int(i) for i in run.time_stamps.split(',')]
 
     steps, data_indeces, samples_list, true_params = load_data(time_stamp_idx, run)
-    params = .1 * initial_parameters(run)
+    params = .01 * initial_parameters(run)
+    # params = params.at[1].add(1.)
 
     opt = Adam(params)
     opt.step_size = run.step_size
