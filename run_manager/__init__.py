@@ -14,6 +14,7 @@ try:
 except FileNotFoundError:
     pass
 
+
 def load_dir_var(var: str):
     try:
         out = os.environ[var]
@@ -28,7 +29,7 @@ ORMBase = declarative_base()
 RESULT_DIR = load_dir_var('RESULT_DIR')
 DATASET_DIR = load_dir_var('DATASET_DIR')
 COMMIT_HASH = get_commit_hash()
-'''Last 6 symbols of the hash of the currently checked out commit of the run_manager repository.'''
+'''First 6 symbols of the hash of the currently checked out commit of the run_manager repository.'''
 
 
 from .run import Run

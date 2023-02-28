@@ -10,7 +10,7 @@ def get_commit_hash():
     if os.environ.get('DEBUG') != '1':
         if repo.is_dirty():
             raise git.exc.RepositoryDirtyError(repo, 'The working directory is not clean.')
-    commit_hash = repo.head.commit.hexsha[-6:]
+    commit_hash = repo.head.commit.hexsha[:6]
     return commit_hash
 
 
@@ -20,5 +20,5 @@ def get_differentiable_tebd_commit_hash():
     if os.environ.get('DEBUG') != '1':
         if repo.is_dirty():
             raise git.exc.RepositoryDirtyError(repo, 'The differentiable_tebd directory is not clean.')
-    commit_hash = repo.head.commit.hexsha[-6:]
+    commit_hash = repo.head.commit.hexsha[:6]
     return commit_hash

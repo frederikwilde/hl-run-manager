@@ -13,7 +13,7 @@ def existing_series():
     return [f for f in os.scandir(RESULT_DIR) if f.is_dir()]
 
 
-def highest_series_number():
+def max_series_number():
     nums = [int(s.name[:3]) for s in existing_series()]
     if nums:
         return max(nums)
@@ -22,9 +22,8 @@ def highest_series_number():
 
 
 class Series:
+    '''Load an existing series.'''
     def __init__(self, number):
-        '''Load an existing series.'''
-
         for s in existing_series():
             num, name, hash = int(s.name[:3]), s.name[4:-7], s.name[-6:]
             if number == num:
@@ -39,13 +38,13 @@ class Series:
                 f'but the currently checked out commit is {COMMIT_HASH}. ',
                 f'Checkout {hash} and reload the series.'
             )
-        
+
         self.path = s.path
         self.number = num
         self.name = name
         self.hash = hash
         self._load_db_session()
-    
+
     def _load_db_session(self):
         db_path = Path.joinpath(Path(self.path), Path('results.db'))
         self.engine = sqa.create_engine(f'sqlite:///{db_path}')
@@ -56,8 +55,8 @@ class Series:
 
     @classmethod
     def new(cls, name):
-        '''Set up a new series directory.'''
-        number = highest_series_number()
+        '''Set up a new series.'''
+        number = max_series_number() + 1
         full_name = f'{number+1:03}_{name}_{COMMIT_HASH}'
         path = Path.joinpath(Path(RESULT_DIR), Path(full_name))
 
@@ -72,4 +71,4 @@ class Series:
         engine = sqa.create_engine(f'sqlite:///{db_path}')
         ORMBase.metadata.create_all(engine)
 
-        return cls(number + 1)
+        return cls(number)
