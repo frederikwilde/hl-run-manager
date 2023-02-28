@@ -1,4 +1,4 @@
-'''Main script to be run for one optimization process.'''
+'''Main script to run for one optimization process.'''
 
 import warnings
 import logging
