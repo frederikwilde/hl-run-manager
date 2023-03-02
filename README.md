@@ -16,7 +16,7 @@ Only applicable for creating Slurm scripts where the specific Python version nee
 ## Serialization
 Numerical experiments are divided into series which have corresponding folders in the result directory.
 Each series contains a collection of runs (corresponding to `Run` objects), each of which corresponds
-to one execution of the `main.py` script. Each series corresponds to a particular version of this
+to one execution of the `execute()` method, i.e. one optimization procedure. Each series corresponds to a particular version of this
 package, indicated by its git commit hash in the title.
 
 Each series has a folder in the result directory named as `<number>_<name>_<git-hash>`, where `number`

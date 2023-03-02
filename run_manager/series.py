@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 import os
 from pathlib import Path
 from datetime import datetime
+import warnings
 
 from . import ORMBase
 from . import COMMIT_HASH
@@ -56,8 +57,11 @@ class Series:
     @classmethod
     def new(cls, name):
         '''Set up a new series.'''
+        if os.environ.get('DEBUG') == '1':
+            warnings.warn('Creating series in debug mode!')
+            name = name + '_DEBUGMODE'
         number = max_series_number() + 1
-        full_name = f'{number+1:03}_{name}_{COMMIT_HASH}'
+        full_name = f'{number:03}_{name}_{COMMIT_HASH}'
         path = Path.joinpath(Path(RESULT_DIR), Path(full_name))
 
         os.mkdir(path)

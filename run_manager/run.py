@@ -4,9 +4,17 @@ import os
 from sqlalchemy.types import Integer, Float, String, DateTime, Text
 from sqlalchemy.schema import Column
 from pathlib import Path
+import logging
+import numpy as np
+import jax
+import jax.numpy as jnp
+from time import time
+import h5py
+from differentiable_tebd.utils.mps import mps_zero_state
 from .series import Series
 from . import RESULT_DIR
 from . import ORMBase
+from . import DATASET_DIR
 
 
 class Run(ORMBase):
@@ -51,7 +59,7 @@ class Run(ORMBase):
     local_dim = Column(Integer)
     num_samples = Column(Integer)
     batch_size = Column(Integer)
-    mps_perturbation = Column(Float)
+    mps_perturbation = Column(Float, default=1e-6)
     opt_method = Column(String(20))
     max_epochs = Column(Integer)
     data_set = Column(String(100))
@@ -59,7 +67,9 @@ class Run(ORMBase):
     series_name = Column(String(100))
     appendix = Column(Text)
 
-    def save_to_db(self, series: Series):
+    SUCCESS_MESSAGE = 'RUN FINISHED AND SAVED SUCCESFULLY'
+
+    def add_to_db(self, series: Series):
         if not self.id:
             self.series_name = f'{series.number:03}_{series.name}_{series.hash}'
             series.session.add(self)
@@ -67,11 +77,21 @@ class Run(ORMBase):
         else:
             warnings.warn('Run already saved.')
 
+    @property
     def status(self):
+        warnings.warn('Not entirely implemented yet.')
         if not self.id:
-            return 'NOT_IN_DB'
-        warnings.warn('Not implemented yet.')
-    
+            out = 'NOT_IN_DB'
+        else:
+            out = 'IN_DB'
+            if self.read_log_file():
+                if self.SUCCESS_MESSAGE in self.read_log_file():
+                    out = 'FINISHED'
+                else:
+                    out = 'JOB_STARTED'
+
+        return out
+
     def pre_execute_check(self):
         if (not self.id) or (not self.series_name):
             raise ValueError('Run is not properly stored in database. Must have a valid id and series_name attribute.')
@@ -98,14 +118,93 @@ class Run(ORMBase):
 
     def read_log_file(self):
         path = Path.joinpath(self.output_directory(), Path(f'{self.id}.log'))
-        with open(path, 'r') as f:
-            out = f.read().split('\n')
+
+        try:
+            with open(path, 'r') as f:
+                out = f.read()
+        except FileNotFoundError:
+            out = None
+        
         return out
 
     def result_file_path(self):
         return Path.joinpath(self.output_directory(), Path(f'{self.id}.hdf5'))
 
-    # More auxiliary methods.
+    def execute(
+        self,
+        loss: callable,
+        initialization: callable,
+        optimizer,
+        launch_script: str
+    ):
+        '''Execute the optimization process and store the results.'''
+        self.pre_execute_check()
+        if os.environ.get('DEBUG') == '1':
+            warnings.warn(f'Executing run {self.id} in DEBUG mode. Repository might be dirty.')
+
+        logging.basicConfig(
+            filename=Path.joinpath(self.output_directory(), Path(f'{self.id}.log')),
+            filemode='w',
+            format='%(asctime)s %(levelname)s:%(message)s',
+            level=logging.DEBUG
+        )
+
+        steps, data_indeces, samples_list, true_params = self.load_data()
+
+        opt = optimizer(initialization(self), self.step_size)
+        loss_history, param_history, grad_history = [], [], []
+        data_shuffle_rng_seed = self.id
+        rng = np.random.default_rng(data_shuffle_rng_seed)
+        filename = Path.joinpath(self.output_directory(), Path(f'{self.id}.hdf5'))
+
+        for e in range(self.max_epochs):
+            rng.shuffle(data_indeces)
+            for batch_indeces in data_indeces.reshape(len(data_indeces)//self.batch_size, self.batch_size):
+                t1 = time()
+                v, g = jax.value_and_grad(loss)(
+                    opt.parameters,
+                    self.ini_mps('neel', rng=rng),
+                    self.deltat,
+                    steps,
+                    [s[batch_indeces] for s in samples_list],
+                    len(samples_list) * self.batch_size
+                )
+                loss_history.append(v)
+                param_history.append(opt.parameters)
+                grad_history.append(g)
+                opt.step(g, e, v)
+
+                diffs = opt.parameters - true_params
+                J_error = np.abs(diffs[0])
+                U_error = np.abs(diffs[1])
+                mu_avg_error = np.linalg.norm(diffs[2:]) / self.num_sites
+
+                message = (
+                    f'Time: {time()-t1:.2f}s  '
+                    f'Errors J: {J_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
+                )
+                print(message)
+                logging.debug(message)
+
+            # Save histories after every epoch
+            with h5py.File(filename, 'w') as f:
+                f.create_dataset('loss_history', data=loss_history)
+                f.create_dataset('param_history', data=param_history)
+                f.create_dataset('grad_history', data=grad_history)
+                f.attrs['data_shuffle_rng_seed'] = data_shuffle_rng_seed
+                f.attrs['steps'] = steps
+                f.attrs['true_params'] = true_params
+                f.attrs['launch_script'] = launch_script
+                if os.environ.get('DEBUG') == '1':
+                    f.attrs['DEBUG'] = '1'
+
+            message = f'Epoch {e+1} done\n'
+            print(message)
+            logging.debug(message)
+
+        logging.debug(self.SUCCESS_MESSAGE)
+
+    # AUXILIARY METHODS
     def __repr__(self):
         if self.id:
             return f'<Run {self.id} {self.time_created:%y-%m-%d %H:%M:%S}>'
@@ -125,4 +224,46 @@ class Run(ORMBase):
         d.pop('time_created')
         d.pop('series_name')
         d.pop('id')
+        try:
+            d.pop('DEBUG')
+        except KeyError:
+            pass
         return self.__class__(**d)
+
+    def ini_mps(self, occupation, rng=None):
+        m = mps_zero_state(
+            self.num_sites,
+            self.chi,
+            self.mps_perturbation,
+            d=self.local_dim,
+            rng=rng
+        )
+        if occupation == 'half-filled':
+            for i in range(self.num_sites//2):
+                m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+        elif occupation == 'neel':
+            for i in range(0, self.num_sites, 2):
+                m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+        else:
+            raise ValueError('Invalid occupation.')
+        return m
+
+    def load_data(self):
+        time_stamp_idx = [int(i) for i in self.time_stamps.split(',')]
+        dataset_path = Path.joinpath(Path(DATASET_DIR), Path(self.data_set))
+
+        samples_list, times = [], []
+        with h5py.File(dataset_path, 'r') as f:
+            for i in time_stamp_idx:
+                samples_list.append(f[f'samples/t{i}'][:self.num_samples])
+                times.append(f.attrs['times'][i])
+            true_params = jnp.concatenate((jnp.array([f.attrs['J'], f.attrs['U']]), f.attrs['mu']))
+
+        steps = []
+        prev_t = 0.
+        for t in times:
+            steps.append(int(np.round((t - prev_t) / self.deltat)))
+            prev_t = t
+
+        data_indeces = np.arange(self.num_samples)
+        return steps, data_indeces, samples_list, true_params
