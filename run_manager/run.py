@@ -10,8 +10,9 @@ import jax
 import jax.numpy as jnp
 from time import time
 import h5py
-from differentiable_tebd.utils.mps import mps_zero_state
+
 from .series import Series
+from .generate_data import ini_mps
 from . import RESULT_DIR
 from . import ORMBase
 from . import DATASET_DIR
@@ -231,22 +232,7 @@ class Run(ORMBase):
         return self.__class__(**d)
 
     def ini_mps(self, occupation, rng=None):
-        m = mps_zero_state(
-            self.num_sites,
-            self.chi,
-            self.mps_perturbation,
-            d=self.local_dim,
-            rng=rng
-        )
-        if occupation == 'half-filled':
-            for i in range(self.num_sites//2):
-                m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-        elif occupation == 'neel':
-            for i in range(0, self.num_sites, 2):
-                m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-        else:
-            raise ValueError('Invalid occupation.')
-        return m
+        return ini_mps(self.num_sites, self.chi, self.mps_perturbation, self.local_dim, occupation, rng)
 
     def load_data(self):
         time_stamp_idx = [int(i) for i in self.time_stamps.split(',')]

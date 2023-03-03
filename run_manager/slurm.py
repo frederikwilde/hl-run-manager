@@ -2,7 +2,6 @@ from .run import Run
 from typing import Sequence
 from pathlib import Path
 import os
-from .main import MAIN_PATH
 from . import PACKAGE_PATH
 from . import config
 

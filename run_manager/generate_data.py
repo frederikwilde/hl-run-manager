@@ -8,11 +8,30 @@ from types import SimpleNamespace
 from pathlib import Path
 from differentiable_tebd.physical_models.bose_hubbard import mps_evolution_order2
 from differentiable_tebd.sampling.bosons import sample_from_mps
+from differentiable_tebd.utils.mps import mps_zero_state
 
 from . import COMMIT_HASH
 from . import DATASET_DIR
-from .main import ini_mps
 from .versioning import get_differentiable_tebd_commit_hash
+
+
+def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
+    m = mps_zero_state(
+        num_sites,
+        chi,
+        mps_perturbation,
+        d=local_dim,
+        rng=rng
+    )
+    if occupation == 'half-filled':
+        for i in range(num_sites//2):
+            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+    elif occupation == 'neel':
+        for i in range(0, num_sites, 2):
+            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+    else:
+        raise ValueError('Invalid occupation.')
+    return m
 
 
 def compute_samples(steps, num_keys, ini_state_occupation):
