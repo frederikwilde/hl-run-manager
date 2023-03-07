@@ -43,7 +43,8 @@ def compute_samples(name, cf, steps, num_keys, ini_state_occupation):
         name (str): File name of the data set.
         cf (object): SimpleNamespace object which has the following attributes.
             num_sites, chi, deltat, J, U, mu, local_dim
-        steps (int): Number of time steps.
+        steps (Sequence[int]): Number of Trotter steps to get to the _next_ time stamp.
+            E.g. [10, 10, 10] would generate data after 10, 20, and 30 Trotter steps.
         num_keys (int): How many samples to draw.
         ini_state_occupation (str): Gets passed on to ini_mps.
     '''
