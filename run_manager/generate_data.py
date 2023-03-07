@@ -4,7 +4,6 @@ import jax
 from time import time
 from datetime import datetime
 import h5py
-from types import SimpleNamespace
 from pathlib import Path
 from differentiable_tebd.physical_models.bose_hubbard import mps_evolution_order2
 from differentiable_tebd.sampling.bosons import sample_from_mps
@@ -29,33 +28,38 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
     elif occupation == 'neel':
         for i in range(0, num_sites, 2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+    elif occupation == 'unity':
+        for i in range(0, num_sites):
+            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
     else:
         raise ValueError('Invalid occupation.')
     return m
 
 
-def compute_samples(steps, num_keys, ini_state_occupation):
+def compute_samples(name, cf, steps, num_keys, ini_state_occupation):
+    '''Generate samples.
+
+    Args:
+        name (str): File name of the data set.
+        cf (object): SimpleNamespace object which has the following attributes.
+            num_sites, chi, deltat, J, U, mu, local_dim
+        steps (int): Number of time steps.
+        num_keys (int): How many samples to draw.
+        ini_state_occupation (str): Gets passed on to ini_mps.
+    '''
     key = jax.random.PRNGKey(steps[0])
     keys = jax.random.split(key, num_keys)
-    cf = SimpleNamespace()  # config object
 
     cf.run_manager_commit_hash = COMMIT_HASH
     cf.differentiable_tebd_hash = get_differentiable_tebd_commit_hash()
 
-    cf.num_sites = 20
-    cf.chi = 30
-    cf.deltat = .02
-
-    cf.J = .1
-    cf.U = 1.
-    cf.mu = .5 * (1. - jnp.sin(jnp.linspace(0, jnp.pi, cf.num_sites)))
     params = jnp.concatenate([jnp.array([cf.J, cf.U]), cf.mu])
 
-    m = ini_mps(cf.num_sites, cf.chi, None, 4, ini_state_occupation)
+    m = ini_mps(cf.num_sites, cf.chi, None, cf.local_dim, ini_state_occupation)
     cf.times = []
 
     now = datetime.utcnow()
-    filename = f'{now:%y-%m-%d}-bowl-{ini_state_occupation}-n{cf.num_sites}.hdf5'
+    filename = f'{now:%y-%m-%d}-{name}-{ini_state_occupation}-n{cf.num_sites}.hdf5'
     path = Path.joinpath(Path(DATASET_DIR), Path(filename))
     with h5py.File(path, 'x') as f:
         g_samples = f.create_group('samples')
@@ -81,10 +85,3 @@ def compute_samples(steps, num_keys, ini_state_occupation):
         
         for k, v in cf.__dict__.items():
             f.attrs[k] = v
-
-
-if __name__ == '__main__':
-    steps = int(sys.argv[1])
-    num_keys = int(sys.argv[2])
-
-    compute_samples(steps, num_keys)
