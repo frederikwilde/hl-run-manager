@@ -68,7 +68,7 @@ class Run(ORMBase):
     series_name = Column(String(100))
     appendix = Column(Text)
 
-    SUCCESS_MESSAGE = 'RUN FINISHED AND SAVED SUCCESFULLY'
+    SUCCESS_MESSAGE = 'RUN FINISHED AND SAVED SUCCESSFULLY'
 
     def add_to_db(self, series: Series):
         if not self.id:
