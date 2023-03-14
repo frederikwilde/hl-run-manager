@@ -14,7 +14,6 @@ cycler==0.11.0
 debugpy==1.6.5
 decorator==5.1.1
 defusedxml==0.7.1
--e git+ssh://git@gitlabph.physik.fu-berlin.de/fwilde/differentiable-tebd.git@ba754bd2f41cf38acb849761ac7ea24051eb0879#egg=differentiable_tebd
 entrypoints==0.4
 executing==1.2.0
 fastjsonschema==2.16.2
@@ -26,7 +25,6 @@ GitPython==3.1.30
 graphviz==0.20.1
 greenlet==2.0.1
 h5py==3.7.0
--e git+ssh://git@github.com/frederikwilde/hl-run-manager.git@efcf95814c3b2ba095dd972099032b73b74234fd#egg=hl_run_manager
 idna==3.4
 importlib-metadata==6.0.0
 ipykernel==6.20.2
@@ -70,7 +68,6 @@ parso==0.8.3
 pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==9.4.0
-pkg_resources==0.0.0
 platformdirs==2.6.2
 prometheus-client==0.15.0
 prompt-toolkit==3.0.36
