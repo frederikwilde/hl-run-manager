@@ -4,7 +4,7 @@ from pathlib import Path
 from . import config
 
 
-venv_path = Path.joinpath(config['VENV_PATH'], Path('bin/activate'))
+venv_path = Path.joinpath(Path(config['VENV_PATH']), Path('bin/activate'))
 
 
 def create_array_script(
