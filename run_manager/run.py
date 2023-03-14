@@ -184,7 +184,6 @@ class Run(ORMBase):
                     f'Time: {time()-t1:.2f}s  '
                     f'Errors J: {J_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
                 )
-                print(message)
                 logging.debug(message)
 
             # Save histories after every epoch
