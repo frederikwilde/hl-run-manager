@@ -11,7 +11,10 @@ The location of this directory must be specified by the `RESULT_DIR` variable.
 The directory which the dataset for learning is found.
 
 ### PYTHON_MODULE
-Only applicable for creating Slurm scripts where the specific Python version needs to be loaded as a module.
+Optional. Only applicable for creating Slurm scripts where the specific Python version needs to be loaded as a module.
+
+### VENV_PATH
+Optional. For generating Slurm scripts, in which the virtual environment needs to be activated.
 
 ## Serialization
 Numerical experiments are divided into series which have corresponding folders in the result directory.

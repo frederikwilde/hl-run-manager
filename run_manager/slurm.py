@@ -1,14 +1,10 @@
 from .run import Run
 from typing import Sequence
 from pathlib import Path
-import os
-from . import PACKAGE_PATH
 from . import config
 
 
-venv_path = Path.joinpath(PACKAGE_PATH, Path('venv/bin/activate'))
-if not os.path.exists(venv_path):
-    raise FileNotFoundError(f'Virtual environment {venv_path} not fount.')
+venv_path = Path.joinpath(config['VENV_PATH'], Path('bin/activate'))
 
 
 def create_array_script(
