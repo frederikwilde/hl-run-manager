@@ -29,16 +29,16 @@ def create_array_script(
         '#!/bin/bash\n',
         f'# index list: {index_list}',
         f'#SBATCH --job-name={name}',
+        f'#SBATCH --output={runs[0].output_directory()}/%a.out'
         '#SBATCH --qos=standard',
-        '#SBATCH --mail-user=fwilde@zedat.fu-berlin.de',
-        '#SBATCH --mail-type=none',
         '#SBATCH --nodes=1',
         '#SBATCH --ntasks=1',
         f'#SBATCH --mem-per-cpu={mem_per_cpu_mb}',
         f'#SBATCH --time={hours:02}:{minutes:02}:00\n',
         f"module add {config['PYTHON_MODULE']}",
         f'source {venv_path}',
-        f'python {launcher_file_path} {series_number} ' + '${SLURM_ARRAY_TASK_ID}'
+        f'python {launcher_file_path} {series_number} ' + '${SLURM_ARRAY_TASK_ID}',
+        ''
     ])
 
     script_name = name + f'_{runs[0].id}-{runs[-1].id}.sh'
