@@ -28,6 +28,14 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
     elif occupation == 'neel':
         for i in range(0, num_sites, 2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+    elif occupation == '2-3rds-neel':
+        for i in range(0, num_sites, 2):
+            if i % 3 == 1 or i % 3 == 2:
+                m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+    elif occupation == '1-3rd-neel':
+        for i in range(0, num_sites, 2):
+            if i % 3 == 1:
+                m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
     elif occupation == 'unity':
         for i in range(0, num_sites):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
