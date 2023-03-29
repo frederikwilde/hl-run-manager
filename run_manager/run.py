@@ -136,7 +136,8 @@ class Run(ORMBase):
         loss: callable,
         initialization: callable,
         optimizer,
-        launch_script: str
+        launch_script: str,
+        print_progress: bool = False
     ):
         '''Execute the optimization process and store the results.'''
         self.pre_execute_check()
@@ -199,7 +200,8 @@ class Run(ORMBase):
                     f.attrs['DEBUG'] = '1'
 
             message = f'Epoch {e+1} done\n'
-            print(message)
+            if print_progress:
+                print(message)
             logging.debug(message)
 
         logging.debug(self.SUCCESS_MESSAGE)
