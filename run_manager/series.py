@@ -33,12 +33,16 @@ class Series:
             raise ValueError(f'No series with number {number} found.')
 
         if not (hash == COMMIT_HASH):
-            # TODO: Should not raise a ValueError but some configuration error.
-            raise ValueError(
-                f'The series {num}_{name} refers to commit {hash}, ',
-                f'but the currently checked out commit is {COMMIT_HASH}. ',
+            msg = (
+                f'The series {num}_{name} refers to commit {hash}, '
+                f'but the currently checked out commit is {COMMIT_HASH}. '
                 f'Checkout {hash} and reload the series.'
             )
+            if os.environ.get('DEBUG') == '1':
+                warnings.warn(msg + '\n\nDEBUG mode activated. The database might not match the ORM model.')
+            else:
+                # TODO: Should not raise a ValueError but some configuration error.
+                raise ValueError(msg)
 
         self.path = s.path
         self.number = num
