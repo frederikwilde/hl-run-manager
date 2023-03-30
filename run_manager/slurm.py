@@ -27,9 +27,9 @@ def create_array_script(
 
     script = '\n'.join([
         '#!/bin/bash\n',
-        f'# index list: {index_list}',
+        f'#SBATCH --array={index_list}',
         f'#SBATCH --job-name={name}',
-        f'#SBATCH --output={runs[0].output_directory()}/%a.out',
+        f'#SBATCH --output={runs[0].output_directory()}/%a_%A.out',
         '#SBATCH --qos=standard',
         '#SBATCH --nodes=1',
         '#SBATCH --ntasks=1',
