@@ -23,7 +23,7 @@ def create_array_script(
         r.pre_execute_check()
     series_number = int(runs[0].series_name[:3])
 
-    index_list = '{' + ','.join(str(r.id) for r in runs) + '}'
+    index_list = ','.join(str(r.id) for r in runs)
 
     script = '\n'.join([
         '#!/bin/bash\n',
