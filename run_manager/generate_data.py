@@ -15,6 +15,28 @@ from .versioning import get_differentiable_tebd_commit_hash
 
 
 def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
+    '''Creates specific MPS, such as the Neel state and others.
+    
+    Args:
+        num_sites (int)
+        chi (int)
+        mps_perturbation (float)
+        local_dim (int)
+        occupation (str): The following options are valid:
+            'half-filled': Only the left half of the system is filled,
+                each site with one particle.
+            'neel': Every other site is filled, beginning with a filled
+                site. 101010...
+            '2-3rds-neel': 011011...
+            '1-3rd-neel': 0100100...
+            'dimer': A Neel state which has evolved up to time pi/4 under
+                nearest-neighbor hopping between disjunct pairs of sites
+                (0-1, 2-3, 4-5, ... but not 1-2, 3-4, ...)
+                One dimer is given by: 1/sqrt(2) * (|10> - i|01>)
+            'n-mer': A Neel state which has evolved up to time pi/8 under
+            all nearest-neighor hopping terms. Note that this requires a
+            local dimension of at least 5.
+    '''
     m = mps_zero_state(
         num_sites,
         chi,
@@ -25,22 +47,48 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
     if occupation == 'half-filled':
         for i in range(num_sites//2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+
     elif occupation == 'neel':
         for i in range(0, num_sites, 2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+
     elif occupation == '2-3rds-neel':
-        for i in range(0, num_sites, 2):
+        for i in range(0, num_sites):
             if i % 3 == 1 or i % 3 == 2:
                 m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+
     elif occupation == '1-3rd-neel':
-        for i in range(0, num_sites, 2):
+        for i in range(0, num_sites):
             if i % 3 == 1:
                 m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+
     elif occupation == 'unity':
         for i in range(0, num_sites):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+
+    elif occupation == 'dimer':
+        s = .5 ** (1/4)
+        for i in range(0, num_sites, 2):
+            m = m.at[i, 0, 0, 0].set(1j * s)
+            m = m.at[i, 0, 1, 1].set(-s)
+            m = m.at[i+1, 0, 0, 0].set(0)
+            m = m.at[i+1, 0, 1, 0].set(-s)
+            m = m.at[i+1, 1, 0, 0].set(-s)
+
+    elif occupation == 'semi-dimer':
+        raise NotImplementedError('To do!')
+
+    elif occupation == 'n-mer':
+        T = jnp.pi / 8
+        # initialize Neel state
+        for i in range(0, num_sites, 2):
+            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+        params = jnp.zeros(2 + len(m), dtype=jnp.float64).at[0].set(1.)
+        m, _ = mps_evolution_order2(params, T/10, 10, m)
+
     else:
         raise ValueError('Invalid occupation.')
+
     return m
 
 
