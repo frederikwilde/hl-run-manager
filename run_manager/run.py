@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 import warnings
 import os
 from sqlalchemy.types import Integer, Float, String, DateTime, Text
@@ -64,7 +64,7 @@ class Run(ORMBase):
     opt_method = Column(String(20))
     max_epochs = Column(Integer)
     data_set = Column(String(100))
-    time_created = Column(DateTime, nullable=False, default=datetime.utcnow)
+    time_created = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
     series_name = Column(String(100))
     appendix = Column(Text)
 
@@ -102,7 +102,7 @@ class Run(ORMBase):
         path = Path.joinpath(Path(RESULT_DIR), Path(self.series_name))
         path = Path.joinpath(path, Path('output'))
         return path
-    
+
     def scripts_directory(self):
         path = Path.joinpath(Path(RESULT_DIR), Path(self.series_name))
         path = Path.joinpath(path, Path('scripts'))
@@ -125,7 +125,7 @@ class Run(ORMBase):
                 out = f.read()
         except FileNotFoundError:
             out = None
-        
+
         return out
 
     def result_file_path(self):

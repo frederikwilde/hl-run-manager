@@ -2,16 +2,15 @@ import sys
 import jax.numpy as jnp
 import jax
 from time import time
-from datetime import datetime
+from datetime import datetime, UTC
 import h5py
 from pathlib import Path
 from differentiable_tebd.physical_models.bose_hubbard import mps_evolution_order2
 from differentiable_tebd.sampling.bosons import sample_from_mps
 from differentiable_tebd.utils.mps import mps_zero_state
 
-from . import COMMIT_HASH
-from . import DATASET_DIR
-from .versioning import get_differentiable_tebd_commit_hash
+from . import COMMIT_HASH, DATASET_DIR, load_dir_var
+from .versioning import get_commit_hash
 
 
 def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
@@ -108,14 +107,15 @@ def compute_samples(name, cf, steps, num_keys, ini_state_occupation):
     keys = jax.random.split(key, num_keys)
 
     cf.run_manager_commit_hash = COMMIT_HASH
-    cf.differentiable_tebd_hash = get_differentiable_tebd_commit_hash()
+    DIFFERENTIABLE_TEBD_DIR = load_dir_var('DIFFERENTIABLE_TEBD_DIR')
+    cf.differentiable_tebd_hash = get_commit_hash(DIFFERENTIABLE_TEBD_DIR)
 
     params = jnp.concatenate([jnp.array([cf.J, cf.U]), cf.mu])
 
     m = ini_mps(cf.num_sites, cf.chi, None, cf.local_dim, ini_state_occupation)
     cf.times = []
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     filename = f'{now:%y-%m-%d}-{name}-{ini_state_occupation}-n{cf.num_sites}.hdf5'
     path = Path.joinpath(Path(DATASET_DIR), Path(filename))
     with h5py.File(path, 'x') as f:

@@ -2,13 +2,22 @@
 Contains scripts and modules used for planning, executing, and monitoring numerical experiments.
 
 ## Environment
-Some variables are necessary. These can either be loaded into the environment, or set via a `config.json` file.
+Some variables are necessary. These can either be loaded into the environment, or set via a `config.ini` file
+in an `[Environment]` section:
+
+### RUN_MANGER_DIR
+Absolute path of the directory this file is contained in. This since the path might be difficult to infer at run time
+when the package is installed with `--config-settings editable_mode=strict`.
+
+### DIFFERENTIABLE_TEBD_DIR
+Absolute path of the `differentiable-tebd` package.
+
 ### RESULT_DIR
 Results, in particular binary files such as databases and HDF5 files are stored in a separate directory.
 The location of this directory must be specified by the `RESULT_DIR` variable.
 
 ### DATASET_DIR
-The directory which the dataset for learning is found.
+The directory containing the datasets for learning.
 
 ### PYTHON_MODULE
 Optional. Only applicable for creating Slurm scripts where the specific Python version needs to be loaded as a module.
