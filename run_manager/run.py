@@ -1,6 +1,10 @@
 from datetime import datetime, UTC
 import warnings
 import os
+from enum import Enum
+import re
+import subprocess
+from sqlalchemy import select
 from sqlalchemy.types import Integer, Float, String, DateTime, Text
 from sqlalchemy.schema import Column
 from pathlib import Path
@@ -11,11 +15,17 @@ import jax.numpy as jnp
 from time import time
 import h5py
 
-from .series import Series
-from .generate_data import ini_mps
-from . import RESULT_DIR
-from . import ORMBase
-from . import DATASET_DIR
+from run_manager.series import Series
+from run_manager.generate_data import ini_mps
+from run_manager import RESULT_DIR, ORMBase, DATASET_DIR
+
+
+class Status(Enum):
+    NOT_IN_DB = "Run needs to be pushed to the database first. Use run.add_to_db()"
+    IN_DB = "Run is in the database, but no log file exists yet."
+    JOB_STARTED = "log file exists"
+    FAILED = "The out file contains an error message."
+    FINISHED = "The log file indicates the run finished successfully."
 
 
 class Run(ORMBase):
@@ -23,14 +33,6 @@ class Run(ORMBase):
     Representation of one optimization run to store in the results database.
 
     Saving a Run instance to a database must be done via the `save_to_db` method.
-
-    The `status` method can return the following values:
-        NOT_IN_DB
-        IN_DB
-        IN_SLURM_SCRIPT
-        JOB_STARTED: log file exists
-        FAILED: out file contains error message
-        FINISHED: log file contains confirmation that the HDF5 file as been created successfully
 
     Args:
         initial_point_seed (int)
@@ -80,45 +82,72 @@ class Run(ORMBase):
 
     @property
     def status(self):
-        warnings.warn('Not entirely implemented yet.')
         if not self.id:
-            out = 'NOT_IN_DB'
-        else:
-            out = 'IN_DB'
-            if self.read_log_file():
-                if self.SUCCESS_MESSAGE in self.read_log_file():
-                    out = 'FINISHED'
-                else:
-                    out = 'JOB_STARTED'
+            return Status.NOT_IN_DB
 
-        return out
+        if self.read_log_file():
+            if self.SUCCESS_MESSAGE in self.read_log_file():
+                return Status.FINISHED
+
+            return Status.JOB_STARTED
+
+        return Status.IN_DB
 
     def pre_execute_check(self):
         if (not self.id) or (not self.series_name):
-            raise ValueError('Run is not properly stored in database. Must have a valid id and series_name attribute.')
+            raise ValueError(
+                'Run is not properly stored in database. '
+                'Must have a valid id and series_name attribute.'
+                'Use `run.add_to_db()`.'
+            )
 
     # Methods for directories and files associated with the run.
+    @property
     def output_directory(self):
         path = Path.joinpath(Path(RESULT_DIR), Path(self.series_name))
         path = Path.joinpath(path, Path('output'))
         return path
 
+    @property
     def scripts_directory(self):
         path = Path.joinpath(Path(RESULT_DIR), Path(self.series_name))
         path = Path.joinpath(path, Path('scripts'))
         return path
 
-    def find_job_id(self):
-        warnings.warn('Not implemented yet.')
-        for f in os.scandir(self.output_directory()):
-            if f.name[-4:] == '.out':
-                pass
+    @property
+    def slurm_job_id(self):
+        log = self.read_log_file()
+
+        if log is None:
+            return None
+
+        matches = re.findall(r'SLURM_JOB_ID=.*$', log)
+        if matches:
+            return matches[0].split('=')[-1]
+
+    def slurm_stats(self, format=None):
+        job_id = self.slurm_job_id
+
+        if job_id is None:
+            return None
+
+        if format is None:
+            format = "jobname,ncpus,reqmem,avevmsize,elapsed"
+
+        out = subprocess.run([
+            "sacct",
+            f"--jobs={job_id}",
+            "--units=M",
+            f"--format={format}"
+        ], capture_output=True)
+
+        return out.stdout.decode('utf-8')
 
     def read_out_file(self):
         warnings.warn('Not implemented yet.')
 
     def read_log_file(self):
-        path = Path.joinpath(self.output_directory(), Path(f'{self.id}.log'))
+        path = Path.joinpath(self.output_directory, Path(f'{self.id}.log'))
 
         try:
             with open(path, 'r') as f:
@@ -129,7 +158,30 @@ class Run(ORMBase):
         return out
 
     def result_file_path(self):
-        return Path.joinpath(self.output_directory(), Path(f'{self.id}.hdf5'))
+        return Path.joinpath(self.output_directory, Path(f'{self.id}.hdf5'))
+
+    @staticmethod
+    def get(attribute: str, value, series):
+        '''
+        Helper function to conveniently get individual runs.
+
+        Args:
+            attribute (str)
+            value: The value to match the attribute by.
+            series (run_manager.series.Series): The series, in which to look for.
+
+        Returns:
+            Single run, if only one was found, else a list of runs.
+        '''
+        selector = getattr(Run, attribute) == value
+
+        runs = series.session.scalars(select(Run).where(selector)).all()
+
+        if len(runs) == 1:
+            return runs[0]
+
+        if len(runs) > 1:
+            return runs
 
     def execute(
         self,
@@ -137,19 +189,27 @@ class Run(ORMBase):
         initialization: callable,
         optimizer,
         launch_script: str,
+        slurm_job_id,
+        *,
         print_progress: bool = False
     ):
         '''Execute the optimization process and store the results.'''
         self.pre_execute_check()
+
         if os.environ.get('DEBUG') == '1':
             warnings.warn(f'Executing run {self.id} in DEBUG mode. Repository might be dirty.')
 
         logging.basicConfig(
-            filename=Path.joinpath(self.output_directory(), Path(f'{self.id}.log')),
+            filename=Path.joinpath(self.output_directory, Path(f'{self.id}.log')),
             filemode='w',
-            format='%(asctime)s %(levelname)s:%(message)s',
+            format='%(asctime)s %(name)s %(levelname)s:%(message)s',
             level=logging.DEBUG
         )
+        logger = logging.getLogger(__name__)
+        logging.getLogger('jax').setLevel(logging.INFO)
+
+        if slurm_job_id:
+            logger.debug(f'SLURM_JOB_ID={slurm_job_id}\n')
 
         steps, data_indeces, samples_list, true_params = self.load_data()
 
@@ -157,7 +217,7 @@ class Run(ORMBase):
         loss_history, param_history, grad_history = [], [], []
         data_shuffle_rng_seed = self.id
         rng = np.random.default_rng(data_shuffle_rng_seed)
-        filename = Path.joinpath(self.output_directory(), Path(f'{self.id}.hdf5'))
+        filename = Path.joinpath(self.output_directory, Path(f'{self.id}.hdf5'))
 
         for e in range(self.max_epochs):
             rng.shuffle(data_indeces)
@@ -185,7 +245,7 @@ class Run(ORMBase):
                     f'Time: {time()-t1:.2f}s  '
                     f'Errors J: {J_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
                 )
-                logging.debug(message)
+                logger.debug(message)
 
             # Save histories after every epoch
             with h5py.File(filename, 'w') as f:
@@ -201,10 +261,10 @@ class Run(ORMBase):
 
             message = f'Epoch {e+1} done\n'
             if print_progress:
-                print(message)
-            logging.debug(message)
+                print(message[:-1])
+            logger.debug(message)
 
-        logging.debug(self.SUCCESS_MESSAGE)
+        logger.debug(self.SUCCESS_MESSAGE)
 
     # AUXILIARY METHODS
     def __repr__(self):

@@ -9,8 +9,8 @@ from differentiable_tebd.physical_models.bose_hubbard import mps_evolution_order
 from differentiable_tebd.sampling.bosons import sample_from_mps
 from differentiable_tebd.utils.mps import mps_zero_state
 
-from . import COMMIT_HASH, DATASET_DIR, load_dir_var
-from .versioning import get_commit_hash
+from run_manager import COMMIT_HASH, DATASET_DIR, load_dir_var
+from run_manager.versioning import get_commit_hash
 
 
 def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):

@@ -2,22 +2,24 @@ import sqlalchemy as sqa
 from sqlalchemy.orm import Session
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, UTC
 import warnings
+import numpy as np
 
-from . import ORMBase
-from . import COMMIT_HASH
-from . import RESULT_DIR
+from run_manager import ORMBase, COMMIT_HASH, RESULT_DIR
 
 
 def existing_series():
-    return [f for f in os.scandir(RESULT_DIR) if f.is_dir()]
+    series = [f for f in os.scandir(RESULT_DIR) if f.is_dir()]
+    series_numbers = np.array([int(s.name[:3]) for s in series])
+    sorted_indices = np.argsort(series_numbers)
+    return [series[i] for i in sorted_indices]
 
 
 def max_series_number():
-    nums = [int(s.name[:3]) for s in existing_series()]
-    if nums:
-        return max(nums)
+    series = existing_series()
+    if series:
+        return int(series[-1].name[:3])
     else:
         return 0
 
@@ -64,6 +66,7 @@ class Series:
         if os.environ.get('DEBUG') == '1':
             warnings.warn('Creating series in debug mode!')
             name = name + '_DEBUGMODE'
+
         number = max_series_number() + 1
         full_name = f'{number:03}_{name}_{COMMIT_HASH}'
         path = Path.joinpath(Path(RESULT_DIR), Path(full_name))
@@ -73,10 +76,20 @@ class Series:
         os.mkdir(Path.joinpath(path, Path('scripts')))
 
         with open(Path.joinpath(path, Path('readme.txt')), 'x') as f:
-            f.write(f'{name}\n{datetime.utcnow():%y-%m-%d %H:%M:%S}\n\n')
+            f.write(f'{name}\n{datetime.now(UTC):%y-%m-%d %H:%M:%S}\n\n')
 
         db_path = Path.joinpath(path, Path('results.db'))
         engine = sqa.create_engine(f'sqlite:///{db_path}')
         ORMBase.metadata.create_all(engine)
 
         return cls(number)
+
+    def delete_run(self, run):
+        response = input(f"{run} will be removed from the database. Continue? [y/n]\n")
+
+        if response == 'y':
+            self.session.delete(run)
+            self.session.commit()
+            print("Deleted.")
+        else:
+            print('Aborted.')

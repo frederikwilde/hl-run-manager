@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='hl-run-manager',
@@ -8,7 +8,7 @@ setup(
     url=None,
     license=None,
     python_requires='>=3.7',
-    packages=['run_manager'],
+    packages=find_packages(),
     install_requires=[
         'jax >=0.2.9',
         'scipy',

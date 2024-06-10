@@ -1,7 +1,7 @@
 from .run import Run
 from typing import Sequence
 from pathlib import Path
-from . import config
+from run_manager import config
 
 
 def create_array_script(
@@ -28,20 +28,20 @@ def create_array_script(
         '#!/bin/bash\n',
         f'#SBATCH --array={index_list}',
         f'#SBATCH --job-name={name}',
-        f'#SBATCH --output={runs[0].output_directory()}/%a_%A.out',
+        f'#SBATCH --output={runs[0].output_directory}/%a_%A.out',
         '#SBATCH --qos=standard',
         '#SBATCH --nodes=1',
         '#SBATCH --ntasks=1',
         f'#SBATCH --mem-per-cpu={mem_per_cpu_mb}',
         f'#SBATCH --time={days:02}-{hours:02}:{minutes:02}:00\n',
-        f"module add {config['PYTHON_MODULE']}",
-        f"source {config['VENV_PATH'] + '/bin/activate'}",
-        f'python {launcher_file_path} {series_number} ' + '${SLURM_ARRAY_TASK_ID}',
+        f"module add {config['Slurm']['PYTHON_MODULE']}",
+        f"source {config['Slurm']['VENV_PATH'] + '/bin/activate'}",
+        f'python {launcher_file_path} {series_number} $SLURM_ARRAY_TASK_ID --job_id=$SLURM_JOB_ID',
         ''
     ])
 
     script_name = name + f'_{runs[0].id}-{runs[-1].id}.sh'
-    script_path = Path.joinpath(runs[0].scripts_directory(), Path(script_name))
+    script_path = Path.joinpath(runs[0].scripts_directory, Path(script_name))
 
     with open(script_path, 'x') as f:
         f.write(script)

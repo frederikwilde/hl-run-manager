@@ -19,11 +19,14 @@ The location of this directory must be specified by the `RESULT_DIR` variable.
 ### DATASET_DIR
 The directory containing the datasets for learning.
 
+## SLURM
+For SLURM batch scripts load these two variables via the `config.ini` file in a `[Slurm]` section.
+
 ### PYTHON_MODULE
-Optional. Only applicable for creating Slurm scripts where the specific Python version needs to be loaded as a module.
+The specific Python version needs to be loaded as a module.
 
 ### VENV_PATH
-Optional. For generating Slurm scripts, in which the virtual environment needs to be activated.
+Path of the virtual environment to activate.
 
 ## Serialization
 Numerical experiments are divided into series which have corresponding folders in the result directory.
