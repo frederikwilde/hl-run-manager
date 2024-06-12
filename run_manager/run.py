@@ -45,6 +45,8 @@ class Run(ORMBase):
         local_dim (int)
         num_samples (int): Number of samples for each time point.
         batch_size (int)
+        ini_state (str): The initial state for the time evolution.
+            Available initial states are documented in `run_manager.generate_data.ini_mps`.
         mps_perturbation (float)
         opt_method (str): Description of the optimizer.
         max_epochs (int)
@@ -62,6 +64,7 @@ class Run(ORMBase):
     local_dim = Column(Integer)
     num_samples = Column(Integer)
     batch_size = Column(Integer)
+    ini_state = Column(String(50))
     mps_perturbation = Column(Float, default=1e-6)
     opt_method = Column(String(20))
     max_epochs = Column(Integer)
@@ -225,7 +228,7 @@ class Run(ORMBase):
                 t1 = time()
                 v, g = jax.value_and_grad(loss)(
                     opt.parameters,
-                    self.ini_mps('neel', rng=rng),
+                    self.ini_mps(self.ini_state, rng=rng),
                     self.deltat,
                     steps,
                     [s[batch_indeces] for s in samples_list],
