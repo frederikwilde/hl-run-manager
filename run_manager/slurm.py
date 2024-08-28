@@ -46,7 +46,7 @@ def create_array_script(
         f"module add {config['Slurm']['PYTHON_MODULE']}",
         f"source {config['Slurm']['VENV_PATH'] + '/bin/activate'}",
         f"cd {DIR_CONTAINING_CONFIG}",
-        f'python {launcher_file_path} {series_number} $SLURM_ARRAY_TASK_ID --job_id=$SLURM_JOB_ID',
+        f'python {launcher_file_path} --slurm_job_id=$SLURM_JOB_ID {series_number} $SLURM_ARRAY_TASK_ID',
         ''
     ])
 
