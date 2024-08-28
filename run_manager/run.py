@@ -124,7 +124,9 @@ class Run(ORMBase):
         if log is None:
             return None
 
-        matches = re.findall(r'SLURM_JOB_ID=.*$', log)
+        # We need MULTILINE, since log is one long string.
+        # See https://sethmlarson.dev/regex-$-matches-end-of-string-or-newline for more info.
+        matches = re.findall(r'SLURM_JOB_ID=.*$', log, re.MULTILINE)
         if matches:
             return matches[0].split('=')[-1]
 
