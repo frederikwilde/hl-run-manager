@@ -3,6 +3,15 @@ from typing import Sequence
 from pathlib import Path
 from run_manager import config
 
+try:
+    from run_manager import DIR_CONTAINING_CONFIG
+except ImportError as e:
+    raise ImportError(
+        'run_manager has not found a config.ini file. '
+        'For creating Slurm scripts, a config.ini file must exist '
+        f'in your working directory. {e}'
+    )
+
 
 def create_array_script(
         launcher_file_path: str,
@@ -36,6 +45,7 @@ def create_array_script(
         f'#SBATCH --time={days:02}-{hours:02}:{minutes:02}:00\n',
         f"module add {config['Slurm']['PYTHON_MODULE']}",
         f"source {config['Slurm']['VENV_PATH'] + '/bin/activate'}",
+        f"cd {DIR_CONTAINING_CONFIG}",
         f'python {launcher_file_path} {series_number} $SLURM_ARRAY_TASK_ID --job_id=$SLURM_JOB_ID',
         ''
     ])

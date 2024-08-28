@@ -7,6 +7,10 @@ from .versioning import get_commit_hash
 config = ConfigParser()
 config.read('config.ini')
 
+if os.path.exists('config.ini'):
+    # For SLURM batch scripts
+    DIR_CONTAINING_CONFIG = os.getcwd()
+
 
 def load_dir_var(var: str):
     try:
