@@ -15,7 +15,7 @@ from run_manager.versioning import get_commit_hash
 
 def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
     '''Creates specific MPS, such as the Neel state and others.
-    
+
     Args:
         num_sites (int)
         chi (int)
@@ -91,7 +91,7 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
     return m
 
 
-def compute_samples(name, cf, steps, num_keys, ini_state_occupation):
+def compute_samples(name, cf, steps, seed, num_samples, ini_state_occupation):
     '''Generate samples.
 
     Args:
@@ -100,11 +100,12 @@ def compute_samples(name, cf, steps, num_keys, ini_state_occupation):
             num_sites, chi, deltat, J, U, mu, local_dim
         steps (Sequence[int]): Number of Trotter steps to get to the _next_ time stamp.
             E.g. [10, 10, 10] would generate data after 10, 20, and 30 Trotter steps.
-        num_keys (int): How many samples to draw.
+        seed (int): PRNG seed.
+        num_samples (int): How many samples to draw per time step.
         ini_state_occupation (str): Gets passed on to ini_mps.
     '''
-    key = jax.random.PRNGKey(steps[0])
-    keys = jax.random.split(key, num_keys)
+    key = jax.random.PRNGKey(seed)
+    keys = jax.random.split(key, (len(steps), num_samples))
 
     cf.run_manager_commit_hash = COMMIT_HASH
     DIFFERENTIABLE_TEBD_DIR = load_dir_var('DIFFERENTIABLE_TEBD_DIR')
@@ -123,7 +124,7 @@ def compute_samples(name, cf, steps, num_keys, ini_state_occupation):
         g_mps = f.create_group('mps')
         g_errs = f.create_group('errors_squared')
 
-        for i, s in enumerate(steps):
+        for i, (s, k) in enumerate(zip(steps, keys)):
             time_stamp = cf.deltat * s + cf.times[-1] if cf.times else cf.deltat * s
             cf.times.append(time_stamp)
 
@@ -132,13 +133,15 @@ def compute_samples(name, cf, steps, num_keys, ini_state_occupation):
             t2 = time()
             evol_time = t2 - t1
             print(f'Time evolution finished in {evol_time:.3f}s')
-            samples = sample_from_mps(m, keys)
+            samples = sample_from_mps(m, k)
             sample_time = time() - t2
             print(f'Sampling finished in {sample_time:.3f}s')
 
             g_samples.create_dataset(f't{i}', data=samples)
             g_mps.create_dataset(f't{i}', data=m)
             g_errs.create_dataset(f't{i}', data=errors_squared)
-        
+
         for k, v in cf.__dict__.items():
             f.attrs[k] = v
+
+        f.attrs['prng_seed'] = seed
