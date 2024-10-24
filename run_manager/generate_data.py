@@ -33,8 +33,9 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
                 (0-1, 2-3, 4-5, ... but not 1-2, 3-4, ...)
                 One dimer is given by: 1/sqrt(2) * (|10> - i|01>)
             'n-mer': A Neel state which has evolved up to time pi/8 under
-            all nearest-neighor hopping terms. Note that this requires a
-            local dimension of at least 5.
+                all nearest-neighor hopping terms. Note that this requires a
+                local dimension of at least 5.
+            'n-mer-pi_4': Like n-mer, but evolved to time pi/4
     '''
     m = mps_zero_state(
         num_sites,
@@ -85,7 +86,7 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
         params = jnp.zeros(2 + len(m), dtype=jnp.float64).at[0].set(1.)
         m, _ = mps_evolution_order2(params, T/10, 10, m)
 
-    elif occupation == 'n-mer-pi/4':
+    elif occupation == 'n-mer-pi_4':
         T = jnp.pi / 4
         # initialize Neel state
         for i in range(0, num_sites, 2):
