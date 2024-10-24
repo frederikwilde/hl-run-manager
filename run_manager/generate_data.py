@@ -85,6 +85,14 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
         params = jnp.zeros(2 + len(m), dtype=jnp.float64).at[0].set(1.)
         m, _ = mps_evolution_order2(params, T/10, 10, m)
 
+    elif occupation == 'n-mer-pi/4':
+        T = jnp.pi / 4
+        # initialize Neel state
+        for i in range(0, num_sites, 2):
+            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+        params = jnp.zeros(2 + len(m), dtype=jnp.float64).at[0].set(1.)
+        m, _ = mps_evolution_order2(params, T/10, 10, m)
+
     else:
         raise ValueError('Invalid occupation.')
 

@@ -1,3 +1,4 @@
+from typing import Tuple, List
 from datetime import datetime, UTC
 import warnings
 import os
@@ -45,12 +46,13 @@ class Run(ORMBase):
         local_dim (int)
         num_samples (int): Number of samples for each time point.
         batch_size (int)
-        ini_state (str): The initial state for the time evolution.
+        ini_states (str): The initial states for the time evolution, separated by commas.
             Available initial states are documented in `run_manager.generate_data.ini_mps`.
         mps_perturbation (float)
         opt_method (str): Description of the optimizer.
         max_epochs (int)
-        data_set (str)
+        data_sets (str): Names of the datasets, separated by commas.
+            All datasets much have matching true_params
         series_name (str): The data series, this run is stored in. Get's filled in automatically.
     '''
     __tablename__ = 'Runs'
@@ -64,18 +66,54 @@ class Run(ORMBase):
     local_dim = Column(Integer)
     num_samples = Column(Integer)
     batch_size = Column(Integer)
-    ini_state = Column(String(50))
+    ini_states = Column(String(200))
     mps_perturbation = Column(Float, default=1e-6)
     opt_method = Column(String(20))
     max_epochs = Column(Integer)
-    data_set = Column(String(100))
+    data_sets = Column(String(500))
     time_created = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
     series_name = Column(String(100))
     appendix = Column(Text)
 
     SUCCESS_MESSAGE = 'RUN FINISHED AND SAVED SUCCESSFULLY'
 
+    def _check_consistency(self):
+        '''Check consistency of the parameters with the dataset name(s).'''
+        # TODO: Ideally, datasets get their own dataclass, which specifies a schema and then
+        # all information that is contained in datasets is not redundently loaded into
+        # the Run object.
+        if f'n{self.num_sites}' not in self.data_sets:
+            raise ValueError(
+                'The number of sites in the dataset does not match '
+                'the specified number os sites.'
+            )
+
+        data_sets = [s.strip() for s in self.data_sets.split(',')]
+        ini_states = [s.strip() for s in self.ini_states.split(',')]
+        if not len(data_sets) == len(ini_states):
+            raise ValueError('The numbers of datasets and ini states must be equal')
+
+        true_params = None
+
+        for d, i in zip(data_sets, ini_states):
+            if i not in d:
+                raise ValueError(
+                    f'ini state {i} not in dataset {d}. '
+                    'ini_states and data_sets might be out of order.'
+                )
+
+            with h5py.File(Path.joinpath(Path(DATASET_DIR), Path(d)), 'r') as f:
+                other_true_params = self.get_true_params(f)
+
+            if true_params is None:
+                true_params = other_true_params
+            else:
+                if not jnp.allclose(true_params, other_true_params):
+                    raise ValueError(f'Dataset {d} has incompatible true_params.')
+
     def add_to_db(self, series: Series):
+        self._check_consistency()
+
         if not self.id:
             self.series_name = f'{series.number:03}_{series.name}_{series.hash}'
             series.session.add(self)
@@ -216,7 +254,8 @@ class Run(ORMBase):
         if slurm_job_id:
             logger.debug(f'SLURM_JOB_ID={slurm_job_id}\n')
 
-        steps, data_indeces, samples_list, true_params = self.load_data()
+        data_list = self.load_data()
+        ini_states = [s.strip() for s in self.ini_states.split(',')]
 
         opt = optimizer(initialization(self), self.step_size)
         loss_history, param_history, grad_history = [], [], []
@@ -225,32 +264,36 @@ class Run(ORMBase):
         filename = Path.joinpath(self.output_directory, Path(f'{self.id}.hdf5'))
 
         for e in range(self.max_epochs):
-            rng.shuffle(data_indeces)
-            for batch_indeces in data_indeces.reshape(len(data_indeces)//self.batch_size, self.batch_size):
-                t1 = time()
-                v, g = jax.value_and_grad(loss)(
-                    opt.parameters,
-                    self.ini_mps(self.ini_state, rng=rng),
-                    self.deltat,
-                    steps,
-                    [s[batch_indeces] for s in samples_list],
-                    len(samples_list) * self.batch_size
-                )
-                loss_history.append(v)
-                param_history.append(opt.parameters)
-                grad_history.append(g)
-                opt.step(g, e, v)
+            for ini_state, data in zip(ini_states, data_list):
+                steps, data_indeces, samples_list, true_params = data
+                rng.shuffle(data_indeces)
+                shape = (len(data_indeces) // self.batch_size, self.batch_size)
 
-                diffs = opt.parameters - true_params
-                J_error = np.abs(diffs[0])
-                U_error = np.abs(diffs[1])
-                mu_avg_error = np.linalg.norm(diffs[2:]) / self.num_sites
+                for batch_indeces in data_indeces.reshape(*shape):
+                    t1 = time()
+                    v, g = jax.value_and_grad(loss)(
+                        opt.parameters,
+                        self.ini_mps(ini_state, rng=rng),
+                        self.deltat,
+                        steps,
+                        [s[batch_indeces] for s in samples_list],
+                        len(samples_list) * self.batch_size
+                    )
+                    loss_history.append(v)
+                    param_history.append(opt.parameters)
+                    grad_history.append(g)
+                    opt.step(g, e, v)
 
-                message = (
-                    f'Time: {time()-t1:.2f}s  '
-                    f'Errors J: {J_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
-                )
-                logger.debug(message)
+                    diffs = opt.parameters - true_params
+                    J_error = np.abs(diffs[0])
+                    U_error = np.abs(diffs[1])
+                    mu_avg_error = np.linalg.norm(diffs[2:]) / self.num_sites
+
+                    message = (
+                        f'Time: {time()-t1:.2f}s  '
+                        f'Errors J: {J_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
+                    )
+                    logger.debug(message)
 
             # Save histories after every epoch
             with h5py.File(filename, 'w') as f:
@@ -300,22 +343,35 @@ class Run(ORMBase):
     def ini_mps(self, occupation, rng=None):
         return ini_mps(self.num_sites, self.chi, self.mps_perturbation, self.local_dim, occupation, rng)
 
-    def load_data(self):
+    def load_data(self) -> List[Tuple]:
         time_stamp_idx = [int(i) for i in self.time_stamps.split(',')]
-        dataset_path = Path.joinpath(Path(DATASET_DIR), Path(self.data_set))
-
-        samples_list, times = [], []
-        with h5py.File(dataset_path, 'r') as f:
-            for i in time_stamp_idx:
-                samples_list.append(f[f'samples/t{i}'][:self.num_samples])
-                times.append(f.attrs['times'][i])
-            true_params = jnp.concatenate((jnp.array([f.attrs['J'], f.attrs['U']]), f.attrs['mu']))
-
-        steps = []
-        prev_t = 0.
-        for t in times:
-            steps.append(int(np.round((t - prev_t) / self.deltat)))
-            prev_t = t
-
         data_indeces = np.arange(self.num_samples)
-        return steps, data_indeces, samples_list, true_params
+
+        data_sets = [s.strip() for s in self.data_sets.split(',')]
+        dataset_paths = [Path.joinpath(Path(DATASET_DIR), Path(s)) for s in data_sets]
+
+        output = []
+        for path in dataset_paths:
+            samples_list, times = [], []
+            with h5py.File(path, 'r') as f:
+                for i in time_stamp_idx:
+                    samples_list.append(f[f'samples/t{i}'][:self.num_samples])
+                    times.append(f.attrs['times'][i])
+                true_params = self.get_true_params(f)
+
+            steps = []
+            prev_t = 0.
+            for t in times:
+                steps.append(int(np.round((t - prev_t) / self.deltat)))
+                prev_t = t
+
+            output.append((steps, data_indeces[:], samples_list, true_params))
+
+        return output
+
+    @staticmethod
+    def get_true_params(file: h5py.File) -> jnp.ndarray:
+        true_params = jnp.concatenate(
+            (jnp.array([file.attrs['J'], file.attrs['U']]), file.attrs['mu'])
+        )
+        return true_params

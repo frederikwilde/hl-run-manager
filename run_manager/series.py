@@ -10,7 +10,7 @@ from run_manager import ORMBase, COMMIT_HASH, RESULT_DIR
 
 
 def existing_series():
-    series = [f for f in os.scandir(RESULT_DIR) if f.is_dir()]
+    series = [f for f in os.scandir(RESULT_DIR) if f.is_dir() and f.name[0] != '.']
     series_numbers = np.array([int(s.name[:3]) for s in series])
     sorted_indices = np.argsort(series_numbers)
     return [series[i] for i in sorted_indices]
