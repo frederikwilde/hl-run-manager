@@ -35,6 +35,8 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
             'n-mer': A Neel state which has evolved up to time pi/8 under
                 all nearest-neighor hopping terms. Note that this requires a
                 local dimension of at least 5.
+            'n-mer-interacting': A Neel state which has evolved up to time pi/8 under
+                all nearest-neighor hopping terms and on-site interactions.
             'n-mer-pi_4': Like n-mer, but evolved to time pi/4
     '''
     m = mps_zero_state(
@@ -84,6 +86,14 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
         for i in range(0, num_sites, 2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
         params = jnp.zeros(2 + len(m), dtype=jnp.float64).at[0].set(1.)
+        m, _ = mps_evolution_order2(params, T/10, 10, m)
+
+    elif occupation == 'n-mer-interacting':
+        T = jnp.pi / 8
+        # initialize Neel state
+        for i in range(0, num_sites, 2):
+            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+        params = jnp.zeros(2 + len(m), dtype=jnp.float64).at[:2].set(1.)
         m, _ = mps_evolution_order2(params, T/10, 10, m)
 
     elif occupation == 'n-mer-pi_4':
