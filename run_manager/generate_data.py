@@ -133,6 +133,33 @@ class DataSet:
     differentiable_tebd_commit_hash: str
     debug_mode: bool
 
+    def overview(self):
+        attrs = [
+            'num_sites',
+            'true_parameters',
+            'ini_state',
+            'times',
+            'chi',
+            'deltat',
+            'local_dim',
+            'prng_seed',
+            'run_manager_commit_hash',
+            'differentiable_tebd_commit_hash',
+        ]
+
+        lines = []
+        for attr in attrs:
+            lines.append(attr + ' = ' + f'{getattr(self, attr)}')
+
+        lines.append(f'samples_list: len={len(self.samples_list)} shape={self.samples_list[0].shape}')
+        if self.mps_list:
+            lines.append(f'mps_list: len={len(self.mps_list)} shape={self.mps_list[0].shape}')
+        else:
+            lines.append('mps_list: None')
+        lines.append(f'errors_squared_list: len={len(self.errors_squared_list)} shape={self.errors_squared_list[0].shape}')
+
+        return '\n'.join(lines)
+
     def to_hdf5(self, filepath: str | Path):
         with h5py.File(filepath, 'x') as f:
             g_samples = f.create_group('samples')
@@ -157,13 +184,19 @@ class DataSet:
     @classmethod
     def from_hdf5(
         cls,
-        filepath: str | Path,
+        filename: str | Path,
+        filename_is_path=False,
         *,
         time_stamp_selection: List[int] | None = None,
         load_mps=False,
         num_samples=None
     ):
-        with h5py.File(filepath, 'r') as f:
+        if filename_is_path:
+            path = filename
+        else:
+            path = Path.joinpath(Path(DATASET_DIR), Path(filename))
+
+        with h5py.File(path, 'r') as f:
             if time_stamp_selection is None:
                 time_stamp_selection = list(range(len(f.attrs['times'])))
 
@@ -254,12 +287,17 @@ def compute_samples(
 
         # Some checks to ensure that the the dataset matches the parameters
         # specified in the arguments.
+        _times = []
+        for s in steps:
+            t = s * deltat + _times[-1] if _times else s * deltat
+            _times.append(t)
+
         assert num_sites == dataset.num_sites
         assert chi == dataset.chi
         assert deltat == dataset.deltat
-        assert true_parameters == dataset.true_parameters
+        assert jnp.allclose(true_parameters, dataset.true_parameters)
         assert local_dim == dataset.local_dim
-        assert steps == dataset.steps
+        assert all(t1 == t2 for t1, t2 in zip(_times, dataset.times))
         assert ini_state == dataset.ini_state
 
     for s, k in zip(steps, keys):

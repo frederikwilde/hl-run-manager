@@ -17,7 +17,7 @@ from time import time
 import h5py
 
 from run_manager.series import Series
-from run_manager.generate_data import ini_mps
+from run_manager.generate_data import ini_mps, DataSet
 from run_manager import RESULT_DIR, ORMBase, DATASET_DIR
 
 
@@ -37,7 +37,6 @@ class Run(ORMBase):
 
     Args:
         initial_point_seed (int)
-        num_sites (int)
         step_size (float)
         deltat (float)
         time_stamps (str): List of indices of the time points to pick in the
@@ -46,19 +45,24 @@ class Run(ORMBase):
         local_dim (int)
         num_samples (int): Number of samples for each time point.
         batch_size (int)
-        ini_states (str): The initial states for the time evolution, separated by commas.
-            Available initial states are documented in `run_manager.generate_data.ini_mps`.
         mps_perturbation (float)
-        opt_method (str): Description of the optimizer.
         max_epochs (int)
         data_sets (str): Names of the datasets, separated by commas.
             All datasets much have matching true_params
+        appendix (str): Additional information.
+
+        # Arguments below get filled automatically by commiting the run to the database via
+        # save_to_db()
+
+        time_created (DateTime)
         series_name (str): The data series, this run is stored in. Get's filled in automatically.
+        num_sites (int)
+        ini_states (str): The initial states for the time evolution, separated by commas.
+            Available initial states are documented in `run_manager.generate_data.ini_mps`.
     '''
     __tablename__ = 'Runs'
     id = Column(Integer, primary_key=True)
     initial_point_seed = Column(Integer)
-    num_sites = Column(Integer)
     step_size = Column(Float)
     deltat = Column(Float)
     time_stamps = Column(String(50))
@@ -66,53 +70,54 @@ class Run(ORMBase):
     local_dim = Column(Integer)
     num_samples = Column(Integer)
     batch_size = Column(Integer)
-    ini_states = Column(String(200))
     mps_perturbation = Column(Float, default=1e-6)
-    opt_method = Column(String(20))
     max_epochs = Column(Integer)
     data_sets = Column(String(500))
-    time_created = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
-    series_name = Column(String(100))
     appendix = Column(Text)
+
+    # Fields that get filled automatically.
+    time_created = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    num_sites = Column(Integer)
+    series_name = Column(String(100))
+    ini_states = Column(String(200))
+    true_params = Column(String(500))
 
     SUCCESS_MESSAGE = 'RUN FINISHED AND SAVED SUCCESSFULLY'
 
-    def _check_consistency(self):
+    def _check_consistency_and_set_vars(self):
         '''Check consistency of the parameters with the dataset name(s).'''
         # TODO: Ideally, datasets get their own dataclass, which specifies a schema and then
         # all information that is contained in datasets is not redundently loaded into
         # the Run object.
-        if f'n{self.num_sites}' not in self.data_sets:
-            raise ValueError(
-                'The number of sites in the dataset does not match '
-                'the specified number os sites.'
-            )
 
-        data_sets = [s.strip() for s in self.data_sets.split(',')]
-        ini_states = [s.strip() for s in self.ini_states.split(',')]
-        if not len(data_sets) == len(ini_states):
-            raise ValueError('The numbers of datasets and ini states must be equal')
-
+        # check num_sites and true_params
+        num_sites = None
         true_params = None
+        ini_states = []
+        for path in self.dataset_paths:
+            with h5py.File(path, 'r') as f:
+                ini_states.append(f.attrs['ini_state'])
 
-        for d, i in zip(data_sets, ini_states):
-            if i not in d:
-                raise ValueError(
-                    f'ini state {i} not in dataset {d}. '
-                    'ini_states and data_sets might be out of order.'
-                )
+                if num_sites is None:
+                    num_sites = int(f.attrs['num_sites'])  # np.int64 gets converted to bytes
+                    true_params = f.attrs['true_parameters']
+                else:
+                    if num_sites != f.attrs['num_sites']:
+                        raise ValueError(
+                            'num_sites must be the same in all datasets'
+                        )
+                    if not jnp.allclose(true_params, f.attrs['true_parameters']):
+                        raise ValueError(
+                            'True parameters must be equal in all datasets'
+                        )
 
-            with h5py.File(Path.joinpath(Path(DATASET_DIR), Path(d)), 'r') as f:
-                other_true_params = self.get_true_params(f)
-
-            if true_params is None:
-                true_params = other_true_params
-            else:
-                if not jnp.allclose(true_params, other_true_params):
-                    raise ValueError(f'Dataset {d} has incompatible true_params.')
+        # set ini_states, num_sites
+        self.num_sites = num_sites
+        self.ini_states = ','.join(ini_states)
+        self.true_params = ','.join([f'{x:.2f}' for x in true_params])
 
     def add_to_db(self, series: Series):
-        self._check_consistency()
+        self._check_consistency_and_set_vars()
 
         if not self.id:
             self.series_name = f'{series.number:03}_{series.name}_{series.hash}'
@@ -120,6 +125,12 @@ class Run(ORMBase):
             series.session.commit()
         else:
             warnings.warn('Run already saved.')
+
+    def get_true_params_from_dataset(self):
+        '''The true_params attribute is a string and only meant for printing.'''
+        dataset = self.data_sets.split(',')[0].strip()
+        dataset = DataSet.from_hdf5(dataset, num_samples=1)
+        return dataset.true_parameters
 
     @property
     def status(self):
@@ -148,6 +159,11 @@ class Run(ORMBase):
         path = Path.joinpath(Path(RESULT_DIR), Path(self.series_name))
         path = Path.joinpath(path, Path('output'))
         return path
+
+    @property
+    def dataset_paths(self):
+        data_sets = [s.strip() for s in self.data_sets.split(',')]
+        return [Path.joinpath(Path(DATASET_DIR), Path(s)) for s in data_sets]
 
     @property
     def scripts_directory(self):
@@ -255,7 +271,6 @@ class Run(ORMBase):
             logger.debug(f'SLURM_JOB_ID={slurm_job_id}\n')
 
         data_list = self.load_data()
-        ini_states = [s.strip() for s in self.ini_states.split(',')]
 
         opt = optimizer(initialization(self), self.step_size)
         loss_history, param_history, grad_history = [], [], []
@@ -264,8 +279,8 @@ class Run(ORMBase):
         filename = Path.joinpath(self.output_directory, Path(f'{self.id}.hdf5'))
 
         for e in range(self.max_epochs):
-            for ini_state, data in zip(ini_states, data_list):
-                steps, data_indeces, samples_list, true_params = data
+            for data in data_list:
+                steps, data_indeces, samples_list, true_params, ini_state = data
                 rng.shuffle(data_indeces)
                 shape = (len(data_indeces) // self.batch_size, self.batch_size)
 
@@ -347,31 +362,22 @@ class Run(ORMBase):
         time_stamp_idx = [int(i) for i in self.time_stamps.split(',')]
         data_indeces = np.arange(self.num_samples)
 
-        data_sets = [s.strip() for s in self.data_sets.split(',')]
-        dataset_paths = [Path.joinpath(Path(DATASET_DIR), Path(s)) for s in data_sets]
-
         output = []
-        for path in dataset_paths:
-            samples_list, times = [], []
-            with h5py.File(path, 'r') as f:
-                for i in time_stamp_idx:
-                    samples_list.append(f[f'samples/t{i}'][:self.num_samples])
-                    times.append(f.attrs['times'][i])
-                true_params = self.get_true_params(f)
+        for path in self.dataset_paths:
+            dataset = DataSet.from_hdf5(path, time_stamp_selection=time_stamp_idx, num_samples=self.num_samples)
 
             steps = []
             prev_t = 0.
-            for t in times:
+            for t in dataset.times:
                 steps.append(int(np.round((t - prev_t) / self.deltat)))
                 prev_t = t
 
-            output.append((steps, data_indeces[:], samples_list, true_params))
+            output.append((
+                steps,
+                data_indeces[:],
+                dataset.samples_list,
+                dataset.true_parameters,
+                dataset.ini_state
+            ))
 
         return output
-
-    @staticmethod
-    def get_true_params(file: h5py.File) -> jnp.ndarray:
-        true_params = jnp.concatenate(
-            (jnp.array([file.attrs['J'], file.attrs['U']]), file.attrs['mu'])
-        )
-        return true_params
