@@ -4,6 +4,8 @@ from sqlalchemy.orm import declarative_base
 from .versioning import get_commit_hash
 
 
+os.environ['SVD_GRAD_THRESHOLD'] = os.environ.get('SVD_GRAD_THRESHOLD', '1e-8')
+
 config = ConfigParser()
 config.read('config.ini')
 

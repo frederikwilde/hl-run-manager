@@ -7,12 +7,30 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 import h5py
 from pathlib import Path
-from differentiable_tebd.physical_models.bose_hubbard import mps_evolution_order2
+from differentiable_tebd.physical_models.bose_hubbard_nnn import mps_evolution
 from differentiable_tebd.sampling.bosons import sample_from_mps
 from differentiable_tebd.utils.mps import mps_zero_state
 
 from run_manager import COMMIT_HASH, DATASET_DIR, load_dir_var
 from run_manager.versioning import get_commit_hash
+
+
+def _to_neel(mps, reverse=False):
+    '''Convert mps_zero_state into Neel state.
+    By default 101010... If reverse is False the order is 010101...'''
+    start = 1 if reverse else 0
+    for i in range(start, len(mps), 2):
+        mps = mps.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
+    return mps
+
+
+def _0_2_quench(m, T, reverse=False):
+    '''Quench with J1=0.2, J2=0.01, U=1. for time T.'''
+    T = jnp.pi / 8
+    m = _to_neel(m, reverse)
+    params = jnp.array([0.2, 0.01, 1.] + len(m) * [0.])
+    m, _ = mps_evolution(params, T/10, 10, m)
+    return m
 
 
 def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
@@ -40,6 +58,10 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
             'n-mer-interacting': A Neel state which has evolved up to time pi/8 under
                 all nearest-neighor hopping terms and on-site interactions.
             'n-mer-pi_4': Like n-mer, but evolved to time pi/4
+
+            '0_2-quench-{rev}-{T}': A quench of the Neel state with the following
+                parameters: J1 = 0.2, J2 = 0.01, U = 1. The Neel state is 101010...
+                and if 'rev' is specified, it is reversed, i.e., 010101...
     '''
     m = mps_zero_state(
         num_sites,
@@ -87,24 +109,45 @@ def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
         # initialize Neel state
         for i in range(0, num_sites, 2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-        params = jnp.zeros(2 + len(m), dtype=jnp.float64).at[0].set(1.)
-        m, _ = mps_evolution_order2(params, T/10, 10, m)
+        params = jnp.zeros(3 + len(m), dtype=jnp.float64).at[0].set(1.)
+        m, _ = mps_evolution(params, T/10, 10, m)
 
     elif occupation == 'n-mer-interacting':
         T = jnp.pi / 8
         # initialize Neel state
         for i in range(0, num_sites, 2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-        params = jnp.zeros(2 + len(m), dtype=jnp.float64).at[:2].set(1.)
-        m, _ = mps_evolution_order2(params, T/10, 10, m)
+        params = jnp.zeros(3 + len(m), dtype=jnp.float64).at[0].set(1.)
+        params = params.at[2].set(1.)
+        m, _ = mps_evolution(params, T/10, 10, m)
 
     elif occupation == 'n-mer-pi_4':
         T = jnp.pi / 4
         # initialize Neel state
         for i in range(0, num_sites, 2):
             m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-        params = jnp.zeros(2 + len(m), dtype=jnp.float64).at[0].set(1.)
-        m, _ = mps_evolution_order2(params, T/10, 10, m)
+        params = jnp.zeros(3 + len(m), dtype=jnp.float64).at[0].set(1.)
+        m, _ = mps_evolution(params, T/10, 10, m)
+
+    #### QUENCHES WITH J/U = 0.2 and next-nearest-neighbor hopping
+
+    elif occupation == '0_2-quench-pi_8':
+        m = _0_2_quench(m, jnp.pi / 8)
+
+    elif occupation == '0_2-quench-rev-pi_8':
+        m = _0_2_quench(m, jnp.pi / 8, reverse=True)
+
+    elif occupation == '0_2-quench-pi_4':
+        m = _0_2_quench(m, jnp.pi / 4)
+
+    elif occupation == '0_2-quench-rev-pi_4':
+        m = _0_2_quench(m, jnp.pi / 4, reverse=True)
+
+    elif occupation == '0_2-quench-3pi_8':
+        m = _0_2_quench(m, 3 * jnp.pi / 8)
+
+    elif occupation == '0_2-quench-rev-3pi_8':
+        m = _0_2_quench(m, 3 * jnp.pi / 8, reverse=True)
 
     else:
         raise ValueError('Invalid occupation.')
@@ -117,7 +160,7 @@ class DataSet:
     '''Defines the schema for datasets and provides loading and saving methods `to_hdf5` and `from_hdf5`.'''
     # meta data
     num_sites: int
-    true_parameters: jnp.ndarray  # J, U, *mu
+    true_parameters: jnp.ndarray  # J1, J2, U, *mu
     ini_state: str
     times: List[float]
     # data
@@ -308,7 +351,7 @@ def compute_samples(
             m, errors_squared = next(mps_iterator), next(errors_iterator)
         else:
             t = time()
-            m, errors_squared = mps_evolution_order2(true_parameters, deltat, s, m)
+            m, errors_squared = mps_evolution(true_parameters, deltat, s, m)
             print(f'Time evolution finished in {time() - t:.3f}s')
 
         t = time()

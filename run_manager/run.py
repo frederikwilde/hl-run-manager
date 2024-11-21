@@ -297,16 +297,17 @@ class Run(ORMBase):
                     loss_history.append(v)
                     param_history.append(opt.parameters)
                     grad_history.append(g)
-                    opt.step(g, e, v)
+                    opt.step(jnp.clip(g, -20, 20), e, v)
 
                     diffs = opt.parameters - true_params
-                    J_error = np.abs(diffs[0])
-                    U_error = np.abs(diffs[1])
-                    mu_avg_error = np.linalg.norm(diffs[2:]) / self.num_sites
+                    J1_error = np.abs(diffs[0])
+                    J2_error = np.abs(diffs[1])
+                    U_error = np.abs(diffs[2])
+                    mu_avg_error = np.linalg.norm(diffs[3:]) / self.num_sites
 
                     message = (
                         f'Time: {time()-t1:.2f}s  '
-                        f'Errors J: {J_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
+                        f'Errors J1: {J1_error:.05f} J2: {J2_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
                     )
                     logger.debug(message)
 
@@ -374,7 +375,7 @@ class Run(ORMBase):
 
             output.append((
                 steps,
-                data_indeces[:],
+                data_indeces.copy(),
                 dataset.samples_list,
                 dataset.true_parameters,
                 dataset.ini_state
