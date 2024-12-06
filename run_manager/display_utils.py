@@ -11,7 +11,7 @@ from run_manager.run import Status
 Column = namedtuple('Column', ['attribute', 'name', 'filter'], defaults=[None, None, None])
 
 
-def table(runs: ScalarResult, columns: Sequence[Column], tablefmt='html'):
+def table(runs: ScalarResult, columns: Sequence[Column], tablefmt='unsafehtml'):
     """Easily modifiable HTML table to quickly print out query results"""
 
     body = []

@@ -6,7 +6,7 @@ from enum import Enum
 import re
 import subprocess
 from sqlalchemy import select
-from sqlalchemy.types import Integer, Float, String, DateTime, Text
+from sqlalchemy.types import Integer, Float, String, DateTime, Text, Boolean
 from sqlalchemy.schema import Column
 from pathlib import Path
 import logging
@@ -49,6 +49,8 @@ class Run(ORMBase):
         max_epochs (int)
         data_sets (str): Names of the datasets, separated by commas.
             All datasets much have matching true_params
+        parity_project (bool): Loads the data and projects it to parity measurements.
+            Also instructs the loss function to parity project the mps.
         appendix (str): Additional information.
 
         # Arguments below get filled automatically by commiting the run to the database via
@@ -73,6 +75,7 @@ class Run(ORMBase):
     mps_perturbation = Column(Float, default=1e-6)
     max_epochs = Column(Integer)
     data_sets = Column(String(500))
+    parity_project = Column(Boolean, nullable=False)
     appendix = Column(Text)
 
     # Fields that get filled automatically.
@@ -216,6 +219,20 @@ class Run(ORMBase):
 
         return out
 
+    @property
+    def total_time_from_logfile(self):
+        logfile = self.read_log_file()
+
+        if logfile is None:
+            return None
+
+        matches = re.findall(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', logfile)
+
+        if len(matches) >= 2:
+            return datetime.strptime(matches[-1], r'%Y-%m-%d %H:%M:%S') - datetime.strptime(matches[0], r'%Y-%m-%d %H:%M:%S')
+
+        return 'n/a'
+
     def result_file_path(self):
         return Path.joinpath(self.output_directory, Path(f'{self.id}.hdf5'))
 
@@ -278,38 +295,47 @@ class Run(ORMBase):
         rng = np.random.default_rng(data_shuffle_rng_seed)
         filename = Path.joinpath(self.output_directory, Path(f'{self.id}.hdf5'))
 
-        for e in range(self.max_epochs):
-            for data in data_list:
-                steps, data_indeces, samples_list, true_params, ini_state = data
-                rng.shuffle(data_indeces)
-                shape = (len(data_indeces) // self.batch_size, self.batch_size)
+        data_indeces = np.arange(self.num_samples)
 
-                for batch_indeces in data_indeces.reshape(*shape):
-                    t1 = time()
-                    v, g = jax.value_and_grad(loss)(
+        for e in range(self.max_epochs):
+            rng.shuffle(data_indeces)
+            shape = (len(data_indeces) // self.batch_size, self.batch_size)
+
+            for batch_indeces in data_indeces.reshape(*shape):
+                t1 = time()
+                v, g = None, None
+
+                for data in data_list:
+                    steps, _, samples_list, true_params, ini_state = data
+
+                    _v, _g = jax.value_and_grad(loss)(
                         opt.parameters,
                         self.ini_mps(ini_state, rng=rng),
                         self.deltat,
                         steps,
                         [s[batch_indeces] for s in samples_list],
-                        len(samples_list) * self.batch_size
+                        len(samples_list) * self.batch_size,
+                        self.parity_project
                     )
-                    loss_history.append(v)
-                    param_history.append(opt.parameters)
-                    grad_history.append(g)
-                    opt.step(jnp.clip(g, -20, 20), e, v)
+                    v = _v if v is None else v + _v
+                    g = _g if g is None else g + _g
 
-                    diffs = opt.parameters - true_params
-                    J1_error = np.abs(diffs[0])
-                    J2_error = np.abs(diffs[1])
-                    U_error = np.abs(diffs[2])
-                    mu_avg_error = np.linalg.norm(diffs[3:]) / self.num_sites
+                loss_history.append(v)
+                param_history.append(opt.parameters)
+                grad_history.append(g)
+                opt.step(jnp.clip(g, -20, 20), e, v)  # for temporarily fixing parameters: .at[slice].set(0)
 
-                    message = (
-                        f'Time: {time()-t1:.2f}s  '
-                        f'Errors J1: {J1_error:.05f} J2: {J2_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
-                    )
-                    logger.debug(message)
+                diffs = opt.parameters - true_params
+                J1_error = np.abs(diffs[0])
+                J2_error = np.abs(diffs[1])
+                U_error = np.abs(diffs[2])
+                mu_avg_error = np.linalg.norm(diffs[3:]) / self.num_sites
+
+                message = (
+                    f'Time: {time()-t1:.2f}s  '
+                    f'Errors J1: {J1_error:.05f} J2: {J2_error:.05f} U: {U_error:.05f} mu: {mu_avg_error:.05f}'
+                )
+                logger.debug(message)
 
             # Save histories after every epoch
             with h5py.File(filename, 'w') as f:
@@ -365,7 +391,12 @@ class Run(ORMBase):
 
         output = []
         for path in self.dataset_paths:
-            dataset = DataSet.from_hdf5(path, time_stamp_selection=time_stamp_idx, num_samples=self.num_samples)
+            dataset = DataSet.from_hdf5(
+                path,
+                time_stamp_selection=time_stamp_idx,
+                num_samples=self.num_samples,
+                parity_project=self.parity_project
+            )
 
             steps = []
             prev_t = 0.

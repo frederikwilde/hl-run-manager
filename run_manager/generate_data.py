@@ -9,150 +9,10 @@ import h5py
 from pathlib import Path
 from differentiable_tebd.physical_models.bose_hubbard_nnn import mps_evolution
 from differentiable_tebd.sampling.bosons import sample_from_mps
-from differentiable_tebd.utils.mps import mps_zero_state
 
 from run_manager import COMMIT_HASH, DATASET_DIR, load_dir_var
 from run_manager.versioning import get_commit_hash
-
-
-def _to_neel(mps, reverse=False):
-    '''Convert mps_zero_state into Neel state.
-    By default 101010... If reverse is False the order is 010101...'''
-    start = 1 if reverse else 0
-    for i in range(start, len(mps), 2):
-        mps = mps.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-    return mps
-
-
-def _0_2_quench(m, T, reverse=False):
-    '''Quench with J1=0.2, J2=0.01, U=1. for time T.'''
-    T = jnp.pi / 8
-    m = _to_neel(m, reverse)
-    params = jnp.array([0.2, 0.01, 1.] + len(m) * [0.])
-    m, _ = mps_evolution(params, T/10, 10, m)
-    return m
-
-
-def ini_mps(num_sites, chi, mps_perturbation, local_dim, occupation, rng=None):
-    '''Creates specific MPS, such as the Neel state and others.
-
-    Args:
-        num_sites (int)
-        chi (int)
-        mps_perturbation (float)
-        local_dim (int)
-        occupation (str): The following options are valid:
-            'half-filled': Only the left half of the system is filled,
-                each site with one particle.
-            'neel': Every other site is filled, beginning with a filled
-                site. 101010...
-            '2-3rds-neel': 011011...
-            '1-3rd-neel': 0100100...
-            'dimer': A Neel state which has evolved up to time pi/4 under
-                nearest-neighbor hopping between disjunct pairs of sites
-                (0-1, 2-3, 4-5, ... but not 1-2, 3-4, ...)
-                One dimer is given by: 1/sqrt(2) * (|10> - i|01>)
-            'n-mer': A Neel state which has evolved up to time pi/8 under
-                all nearest-neighor hopping terms. Note that this requires a
-                local dimension of at least 5.
-            'n-mer-interacting': A Neel state which has evolved up to time pi/8 under
-                all nearest-neighor hopping terms and on-site interactions.
-            'n-mer-pi_4': Like n-mer, but evolved to time pi/4
-
-            '0_2-quench-{rev}-{T}': A quench of the Neel state with the following
-                parameters: J1 = 0.2, J2 = 0.01, U = 1. The Neel state is 101010...
-                and if 'rev' is specified, it is reversed, i.e., 010101...
-    '''
-    m = mps_zero_state(
-        num_sites,
-        chi,
-        mps_perturbation,
-        d=local_dim,
-        rng=rng
-    )
-    if occupation == 'half-filled':
-        for i in range(num_sites//2):
-            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-
-    elif occupation == 'neel':
-        for i in range(0, num_sites, 2):
-            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-
-    elif occupation == '2-3rds-neel':
-        for i in range(0, num_sites):
-            if i % 3 == 1 or i % 3 == 2:
-                m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-
-    elif occupation == '1-3rd-neel':
-        for i in range(0, num_sites):
-            if i % 3 == 1:
-                m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-
-    elif occupation == 'unity':
-        for i in range(0, num_sites):
-            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-
-    elif occupation == 'dimer':
-        s = .5 ** (1/4)
-        for i in range(0, num_sites, 2):
-            m = m.at[i, 0, 0, 0].set(1j * s)
-            m = m.at[i, 0, 1, 1].set(-s)
-            m = m.at[i+1, 0, 0, 0].set(0)
-            m = m.at[i+1, 0, 1, 0].set(-s)
-            m = m.at[i+1, 1, 0, 0].set(-s)
-
-    elif occupation == 'semi-dimer':
-        raise NotImplementedError('To do!')
-
-    elif occupation == 'n-mer':
-        T = jnp.pi / 8
-        # initialize Neel state
-        for i in range(0, num_sites, 2):
-            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-        params = jnp.zeros(3 + len(m), dtype=jnp.float64).at[0].set(1.)
-        m, _ = mps_evolution(params, T/10, 10, m)
-
-    elif occupation == 'n-mer-interacting':
-        T = jnp.pi / 8
-        # initialize Neel state
-        for i in range(0, num_sites, 2):
-            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-        params = jnp.zeros(3 + len(m), dtype=jnp.float64).at[0].set(1.)
-        params = params.at[2].set(1.)
-        m, _ = mps_evolution(params, T/10, 10, m)
-
-    elif occupation == 'n-mer-pi_4':
-        T = jnp.pi / 4
-        # initialize Neel state
-        for i in range(0, num_sites, 2):
-            m = m.at[i, 0, 0, 0].set(0.).at[i, 0, 1, 0].set(1.)
-        params = jnp.zeros(3 + len(m), dtype=jnp.float64).at[0].set(1.)
-        m, _ = mps_evolution(params, T/10, 10, m)
-
-    #### QUENCHES WITH J/U = 0.2 and next-nearest-neighbor hopping
-
-    elif occupation == '0_2-quench-pi_8':
-        m = _0_2_quench(m, jnp.pi / 8)
-
-    elif occupation == '0_2-quench-rev-pi_8':
-        m = _0_2_quench(m, jnp.pi / 8, reverse=True)
-
-    elif occupation == '0_2-quench-pi_4':
-        m = _0_2_quench(m, jnp.pi / 4)
-
-    elif occupation == '0_2-quench-rev-pi_4':
-        m = _0_2_quench(m, jnp.pi / 4, reverse=True)
-
-    elif occupation == '0_2-quench-3pi_8':
-        m = _0_2_quench(m, 3 * jnp.pi / 8)
-
-    elif occupation == '0_2-quench-rev-3pi_8':
-        m = _0_2_quench(m, 3 * jnp.pi / 8, reverse=True)
-
-    else:
-        raise ValueError('Invalid occupation.')
-
-    return m
+from run_manager.initial_states import ini_mps
 
 
 @dataclass
@@ -188,6 +48,7 @@ class DataSet:
             'prng_seed',
             'run_manager_commit_hash',
             'differentiable_tebd_commit_hash',
+            'debug_mode',
         ]
 
         lines = []
@@ -221,7 +82,7 @@ class DataSet:
                 g_errs.create_dataset(f't{i}', data=e)
 
             for k, v in self.__dict__.items():
-                if not k in ['samples_list', 'mps_list', 'errors_squared_list']:
+                if k not in ['samples_list', 'mps_list', 'errors_squared_list']:
                     f.attrs[k] = v
 
     @classmethod
@@ -232,7 +93,8 @@ class DataSet:
         *,
         time_stamp_selection: List[int] | None = None,
         load_mps=False,
-        num_samples=None
+        num_samples=None,
+        parity_project=False
     ):
         if filename_is_path:
             path = filename
@@ -251,7 +113,10 @@ class DataSet:
             else:
                 mps_list = None
 
-            samples_list = [f[f'samples/t{i}'][:num_samples] for i in time_stamp_selection]
+            samples_list = []
+            for i in time_stamp_selection:
+                samples = f[f'samples/t{i}'][:num_samples]
+                samples_list.append(samples % 2 if parity_project else samples)
             errors_squared_list = [f[f'errors_squared/t{i}'][()] for i in time_stamp_selection]
 
             meta_data_keys = [
