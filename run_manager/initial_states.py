@@ -55,6 +55,11 @@ def _ini_mps(num_sites, chi, local_dim, occupation):
         occupation = ''.join(occupation.split(matches[0]))
         kwargs['time'] = float(matches[0][5:])
 
+    matches = re.findall(r'-period\d*', occupation)
+    if matches:
+        occupation = ''.join(occupation.split(matches[0]))
+        kwargs['period'] = float(matches[0][7:])
+
     try:
         generate_mps = _initializations[occupation]
         return generate_mps(num_sites, chi, local_dim, **kwargs)
@@ -98,6 +103,28 @@ _initializations['neel'] = _Initialization(
     'Every other site is filled, beginning with a filled site. 101010...',
     _to_neel,
     ['reverse']
+)
+
+# neel-multi
+
+
+def neel_multi(m, reverse=False, period=2):
+    s = jnp.arange(m.shape[0]) // period % 2 == 0
+    if reverse:
+        s = ~s
+
+    m = m.at[s, 0, 0, 0].set(0).at[s, 0, 1, 0].set(1)
+    return m
+
+
+_initializations['neel-multi'] = _Initialization(
+    (
+        'Neel state, extending over multiple sites. The keyword argument `period` '
+        'specifies the length of the intervals. For instance, for `period=2` we obtain '
+        '`11001100...` and with `reverse=True` we get `00110011...`'
+    ),
+    neel_multi,
+    ['reverse', 'period']
 )
 
 # neel-one-third

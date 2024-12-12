@@ -220,6 +220,19 @@ class Run(ORMBase):
         return out
 
     @property
+    def debug_mode(self):
+        log = self.read_log_file()
+
+        if log is None:
+            return None
+
+        matches = re.findall('DEBUG=1', log)
+        if matches:
+            return True
+
+        return False
+
+    @property
     def total_time_from_logfile(self):
         logfile = self.read_log_file()
 
@@ -272,9 +285,6 @@ class Run(ORMBase):
         '''Execute the optimization process and store the results.'''
         self.pre_execute_check()
 
-        if os.environ.get('DEBUG') == '1':
-            warnings.warn(f'Executing run {self.id} in DEBUG mode. Repository might be dirty.')
-
         logging.basicConfig(
             filename=Path.joinpath(self.output_directory, Path(f'{self.id}.log')),
             filemode='w',
@@ -283,6 +293,10 @@ class Run(ORMBase):
         )
         logger = logging.getLogger(__name__)
         logging.getLogger('jax').setLevel(logging.INFO)
+
+        if os.environ.get('DEBUG') == '1':
+            warnings.warn(f'Executing run {self.id} in DEBUG mode. Repository might be dirty.')
+            logger.debug('DEBUG=1')
 
         if slurm_job_id:
             logger.debug(f'SLURM_JOB_ID={slurm_job_id}\n')

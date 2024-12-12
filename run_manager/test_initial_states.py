@@ -89,3 +89,31 @@ def test_perturbation():
     m2 = ini_mps(6, 10, 1e-6, 3, 'neel', rng)
 
     assert not jnp.allclose(m1, m2)
+
+
+@pytest.mark.parametrize('reverse', [True, False])
+@pytest.mark.parametrize('n', [6, 7])
+def test_neel_multi(n, reverse):
+    expected_2 = jnp.array([1, 1, 0, 0, 1, 1, 0])
+    expected_3 = jnp.array([1, 1, 1, 0, 0, 0, 1])
+
+    if reverse:
+        expected_2 = jnp.abs(expected_2 - 1)
+        expected_3 = jnp.abs(expected_3 - 1)
+
+    occupation = 'neel-multi'
+    if reverse:
+        occupation += '-reverse'
+
+    neel_2 = ini_mps(n, 1, None, 2, occupation + '-period2')
+    neel_3 = ini_mps(n, 1, None, 2, occupation + '-period3')
+
+    for i in range(n):
+        j = expected_2[i]
+        neel_2 = neel_2.at[i, 0, j, 0].add(-1)
+
+        j = expected_3[i]
+        neel_3 = neel_3.at[i, 0, j, 0].add(-1)
+
+    assert jnp.allclose(neel_2, 0)
+    assert jnp.allclose(neel_3, 0)
