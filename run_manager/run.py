@@ -392,6 +392,7 @@ class Run(ORMBase):
             value_and_grad_recorded,
             opt.parameters,
             method='BFGS',
+            jac=True,
             options={'gtol': self.bfgs_gtol, 'maxiter': self.bfgs_maxiter},
         )
         logger.debug(result.get('message'))
