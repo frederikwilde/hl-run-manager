@@ -77,8 +77,8 @@ class Run(ORMBase):
     max_epochs = Column(Integer)
     data_sets = Column(String(500))
     parity_project = Column(Boolean, nullable=False)
-    bfgs_gtol = Column(float, default=1e-4)
-    bfgs_maxiter = Column(int, default=100)
+    bfgs_gtol = Column(Float, default=1e-4)
+    bfgs_maxiter = Column(Integer, default=100)
     appendix = Column(Text)
 
     # Fields that get filled automatically.
