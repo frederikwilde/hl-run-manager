@@ -11,6 +11,7 @@ from sqlalchemy.schema import Column
 from pathlib import Path
 import logging
 import numpy as np
+from scipy.optimize import minimize
 import jax
 import jax.numpy as jnp
 from time import time
@@ -76,6 +77,8 @@ class Run(ORMBase):
     max_epochs = Column(Integer)
     data_sets = Column(String(500))
     parity_project = Column(Boolean, nullable=False)
+    bfgs_gtol = Column(float, default=1e-4)
+    bfgs_maxiter = Column(int, default=100)
     appendix = Column(Text)
 
     # Fields that get filled automatically.
@@ -367,7 +370,38 @@ class Run(ORMBase):
             if print_progress:
                 print(message[:-1])
             logger.debug(message)
+        logger.debug('Starting second optimizer')
 
+        def value_and_grad_recorded(params):
+            '''Helper to record calls from scipy.optimize.minimize into histories.'''
+            v, g = jax.value_and_grad(loss)(
+                params,
+                self.ini_mps(ini_state, rng=rng),
+                self.deltat,
+                steps,
+                samples_list,
+                len(samples_list) * self.num_samples,
+                self.parity_project
+            )
+            loss_history.append(v)
+            param_history.append(params)
+            grad_history.append(g)
+            return v, g
+
+        result = minimize(
+            value_and_grad_recorded,
+            opt.parameters,
+            method='BFGS',
+            gtol=self.bfgs_gtol,
+            maxiter=self.bfgs_maxiter
+        )
+        logger.debug(result.get('message'))
+        v, g = value_and_grad_recorded(result['x'])  # record the solution
+
+        with h5py.File(filename, 'w') as f:
+            f.create_dataset('loss_history', data=loss_history)
+            f.create_dataset('param_history', data=param_history)
+            f.create_dataset('grad_history', data=grad_history)
         logger.debug(self.SUCCESS_MESSAGE)
 
     # AUXILIARY METHODS
