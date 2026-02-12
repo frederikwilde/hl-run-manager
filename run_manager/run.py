@@ -14,8 +14,9 @@ import numpy as np
 from scipy.optimize import minimize
 import jax
 import jax.numpy as jnp
-from time import time
+from time import time, sleep
 import h5py
+from sqlalchemy.exc import OperationalError
 
 from run_manager.series import Series
 from run_manager.generate_data import ini_mps, DataSet
@@ -66,6 +67,8 @@ class Run(ORMBase):
     __tablename__ = 'Runs'
     id = Column(Integer, primary_key=True)
     initial_point_seed = Column(Integer)
+    initial_point_bias = Column(Float)
+    initial_point_stddev = Column(Float)
     step_size = Column(Float)
     deltat = Column(Float)
     time_stamps = Column(String(50))
@@ -287,15 +290,7 @@ class Run(ORMBase):
     ):
         '''Execute the optimization process and store the results.'''
         self.pre_execute_check()
-
-        logging.basicConfig(
-            filename=Path.joinpath(self.output_directory, Path(f'{self.id}.log')),
-            filemode='w',
-            format='%(asctime)s %(name)s %(levelname)s:%(message)s',
-            level=logging.DEBUG
-        )
-        logger = logging.getLogger(__name__)
-        logging.getLogger('jax').setLevel(logging.INFO)
+        logger = self.__setup_logging()
 
         if os.environ.get('DEBUG') == '1':
             warnings.warn(f'Executing run {self.id} in DEBUG mode. Repository might be dirty.')
@@ -461,3 +456,31 @@ class Run(ORMBase):
             ))
 
         return output
+
+    def __setup_logging(self):
+        logging.basicConfig(
+            filename=Path.joinpath(self.output_directory, Path(f'{self.id}.log')),
+            filemode='w',
+            format='%(asctime)s %(name)s %(levelname)s:%(message)s',
+            level=logging.DEBUG
+        )
+        logging.getLogger('jax').setLevel(logging.INFO)
+        return logging.getLogger(__name__)
+    
+
+def safe_query(series, run_index: int) -> Run:
+    # Obtain the Run object from the database. This might lead to collisions,
+    # when other processes are querying as well. I don't think this is the fault
+    # of SQLite or SQLAlchemy, but rather the filesystem.
+    # Some info on concurrency can be found here: https://sqlite.com/faq.html#q5
+    t = time()
+
+    while time() - t <= 60:  # timeout after 60s
+        try:
+            run = series.session.query(Run).where(Run.id == run_index).first()
+            return run
+
+        except OperationalError:
+            sleep(np.random.rand())
+
+    raise TimeoutError('Querying database was unsuccessful.')

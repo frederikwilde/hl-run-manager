@@ -24,3 +24,15 @@ class Adam(GradientDescentOptimizer):
         self.m_hat = self.m / (1-self.beta1**self.iter)
         self.v_hat = self.v / (1-self.beta2**self.iter)
         self.parameters -= self.step_size * self.m_hat / (np.sqrt(self.v_hat) + self.eps)
+
+
+class Optimizer:
+    def __init__(self, parameters, step_size):
+        self.opt = Adam(parameters, step_size=step_size)
+
+    def step(self, gradient, epoch, loss_value):
+        self.opt.step(gradient)
+
+    @property
+    def parameters(self):
+        return self.opt.parameters

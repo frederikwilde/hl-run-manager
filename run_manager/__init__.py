@@ -35,5 +35,5 @@ COMMIT_HASH = get_commit_hash(RUN_MANAGER_DIR)
 '''First 6 symbols of the hash of the currently checked out commit of the run_manager repository.'''
 
 
-from .run import Run
+from .run import Run, safe_query
 from .series import Series
