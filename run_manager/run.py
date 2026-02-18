@@ -361,9 +361,9 @@ class Run(ORMBase):
                 if os.environ.get('DEBUG') == '1':
                     f.attrs['DEBUG'] = '1'
 
-            message = f'Epoch {e+1} done\n'
+            message = f'Epoch {e+1} done'
             if print_progress:
-                print(message[:-1])
+                print(message)
             logger.debug(message)
         logger.debug('Starting second optimizer')
 
@@ -390,7 +390,9 @@ class Run(ORMBase):
             jac=True,
             options={'gtol': self.bfgs_gtol, 'maxiter': self.bfgs_maxiter},
         )
-        logger.debug(result.get('message'))
+        logger.debug(message := result.get('message'))
+        if print_progress:
+            print(message)
         v, g = value_and_grad_recorded(result['x'])  # record the solution
 
         with h5py.File(filename, 'w') as f:
